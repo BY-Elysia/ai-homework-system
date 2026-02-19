@@ -211,9 +211,7 @@ const loadSnapshot = async () => {
   }
   try {
     const snapshot = await getAssignmentSnapshot(assignmentId.value)
-    console.log('snapshot', snapshot)
     const snapshotQuestions = (snapshot?.questions ?? []) as AssignmentSnapshotQuestion[]
-    console.log('snapshotQuestions', snapshotQuestions)
     questions.value = snapshotQuestions.map((item) => {
       const prompt = normalizePrompt(item.prompt)
       const parentPrompt = normalizePrompt((item as any).parentPrompt)
@@ -235,7 +233,12 @@ const loadSnapshot = async () => {
       error.value = '作业题目为空或未发布，请联系老师确认'
     }
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '加载题目失败'
+    const message = err instanceof Error ? err.message : '加载题目失败'
+    if (message.includes('作业提交后不可查看')) {
+      error.value = '教师设置学生提交后暂不可见'
+    } else {
+      error.value = message
+    }
   } finally {
     loading.value = false
   }

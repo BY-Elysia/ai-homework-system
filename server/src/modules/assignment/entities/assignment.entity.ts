@@ -33,6 +33,18 @@ export class AssignmentEntity {
   @Column({ name: 'ai_enabled', type: 'boolean', default: true })
   aiEnabled!: boolean;
 
+  @Column({ name: 'visible_after_submit', type: 'boolean', default: true })
+  visibleAfterSubmit!: boolean;
+
+  @Column({ name: 'allow_view_answer', type: 'boolean', default: false })
+  allowViewAnswer!: boolean;
+
+  @Column({ name: 'allow_view_score', type: 'boolean', default: true })
+  allowViewScore!: boolean;
+
+  @Column({ name: 'handwriting_recognition', type: 'boolean', default: false })
+  handwritingRecognition!: boolean;
+
   @Column({
     type: 'enum',
     enum: AssignmentStatus,

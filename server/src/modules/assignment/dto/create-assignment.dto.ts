@@ -75,6 +75,22 @@ export class CreateAssignmentDto {
   aiEnabled?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  visibleAfterSubmit?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  allowViewAnswer?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  allowViewScore?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  handwritingRecognition?: boolean;
+
+  @IsOptional()
   @IsEnum(AssignmentStatus)
   status?: AssignmentStatus;
 

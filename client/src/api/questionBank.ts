@@ -37,6 +37,7 @@ export type QuestionBankStructureResponse = {
   textbooks: Array<{
     id: string
     courseId: string
+    visibleSchoolIds?: string[]
     externalId: string
     title: string
     subject: string
@@ -88,4 +89,20 @@ export async function importQuestionBank(payload: unknown) {
     method: 'POST',
     body: payload,
   })
+}
+
+export async function listQuestionBankSchools() {
+  return httpRequest<{ items: Array<{ schoolId: string }> }>('/question-bank/schools', {
+    method: 'GET',
+  })
+}
+
+export async function updateTextbookVisibility(textbookId: string, schoolIds: string[]) {
+  return httpRequest<{ success: boolean; textbookId: string; schoolIds: string[] }>(
+    `/question-bank/textbooks/${textbookId}/visibility`,
+    {
+      method: 'PATCH',
+      body: { schoolIds },
+    },
+  )
 }

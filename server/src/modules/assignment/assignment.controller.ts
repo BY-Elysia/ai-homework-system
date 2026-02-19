@@ -111,7 +111,12 @@ export class AssignmentController {
   }
 
   @Get(':assignmentId/snapshot')
-  async getCurrentSnapshot(@Param('assignmentId') assignmentId: string) {
-    return this.assignmentService.getCurrentSnapshot(assignmentId);
+  @UseGuards(JwtAuthGuard)
+  async getCurrentSnapshot(
+    @Param('assignmentId') assignmentId: string,
+    @Req() req: any,
+  ) {
+    const payload = req.user as { sub: string; schoolId: string; role: UserRole };
+    return this.assignmentService.getCurrentSnapshot(assignmentId, payload);
   }
 }

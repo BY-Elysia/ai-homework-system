@@ -5,12 +5,13 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
-import { CourseEntity } from '../assignment/entities/course.entity';
+import { CourseEntity, CourseStatus } from '../assignment/entities/course.entity';
 import {
   AssignmentQuestionEntity,
   QuestionNodeType,
   QuestionType,
 } from '../assignment/entities/assignment-question.entity';
+import { UserEntity } from '../auth/entities/user.entity';
 import { ChapterEntity } from './entities/chapter.entity';
 import { TextbookEntity } from './entities/textbook.entity';
 import {
@@ -18,6 +19,7 @@ import {
   GroupQuestionInput,
   LeafQuestionInput,
   MediaItem,
+  QuestionBankVisibilityUpdateDto,
   QuestionBankUpdateDto,
   QuestionBankImportDto,
   TextBlock,
@@ -35,24 +37,30 @@ export class QuestionBankService {
     private readonly questionRepo: Repository<AssignmentQuestionEntity>,
     @InjectRepository(CourseEntity)
     private readonly courseRepo: Repository<CourseEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
   ) {}
 
   async importQuestionBank(payload: QuestionBankImportDto, userId: string) {
-    this.validatePayload(payload);
-
-    const course = await this.courseRepo.findOne({
-      where: { id: payload.courseId },
-    });
-    if (!course) {
-      throw new NotFoundException('Course not found');
+    const uploader = await this.userRepo.findOne({ where: { id: userId } });
+    if (!uploader) {
+      throw new NotFoundException('User not found');
     }
+    this.validatePayload(payload);
+    const course = await this.resolveImportCourse(payload.courseId, uploader.schoolId, userId);
+    const normalizedSchoolIds = this.normalizeSchoolIds([
+      ...(payload.visibleSchoolIds ?? []),
+      uploader.schoolId,
+    ]);
 
     return this.dataSource.transaction(async (manager) => {
       const textbook = await this.upsertTextbook(
         manager.getRepository(TextbookEntity),
         payload,
+        course.id,
         userId,
       );
+      await this.upsertTextbookVisibility(textbook.id, normalizedSchoolIds, manager);
       const chapterMap = await this.upsertChapters(
         manager.getRepository(ChapterEntity),
         payload.chapters,
@@ -67,7 +75,7 @@ export class QuestionBankService {
           const group = await this.createGroupQuestion(
             questionRepo,
             question,
-            payload.courseId,
+            course.id,
             chapterMap,
             userId,
           );
@@ -81,7 +89,7 @@ export class QuestionBankService {
                 chapterId: question.chapterId,
                 nodeType: 'LEAF',
               },
-              payload.courseId,
+              course.id,
               chapterMap,
               userId,
               group.id,
@@ -92,7 +100,7 @@ export class QuestionBankService {
           const leaf = await this.createLeafQuestion(
             questionRepo,
             question,
-            payload.courseId,
+            course.id,
             chapterMap,
             userId,
           );
@@ -102,6 +110,7 @@ export class QuestionBankService {
 
       return {
         textbookId: textbook.id,
+        visibleSchoolIds: normalizedSchoolIds,
         chapterCount: chapterMap.size,
         questionCount: createdQuestionIds.size,
         questionIdMap: Object.fromEntries(createdQuestionIds),
@@ -110,49 +119,100 @@ export class QuestionBankService {
   }
 
   async findAll(courseId: string | undefined, schoolId: string) {
-    const courses = await this.resolveSchoolCourseIds(schoolId, courseId);
-    if (!courses.length) {
+    const textbookIds = await this.resolveVisibleTextbookIds(schoolId, courseId);
+    if (!textbookIds.length) {
+      return [];
+    }
+    const chapterRows = await this.chapterRepo.find({
+      where: { textbookId: In(textbookIds) },
+      select: ['id'],
+    });
+    const chapterIds = chapterRows.map((item) => item.id);
+    if (!chapterIds.length) {
       return [];
     }
     return this.questionRepo.find({
-      where: { courseId: In(courses) },
+      where: { chapterId: In(chapterIds) },
       order: { createdAt: 'DESC' },
     });
   }
 
   async getStructure(courseId: string | undefined, schoolId: string) {
-    const courseIds = await this.resolveSchoolCourseIds(schoolId, courseId);
-    if (!courseIds.length) {
+    const textbookIds = await this.resolveVisibleTextbookIds(schoolId, courseId);
+    if (!textbookIds.length) {
       return { textbooks: [], chapters: [] };
     }
     const textbooks = await this.textbookRepo.find({
-      where: { courseId: In(courseIds) },
+      where: { id: In(textbookIds) },
       order: { createdAt: 'ASC' },
     });
-    const textbookIds = textbooks.map((item) => item.id);
-    if (textbookIds.length === 0) {
+    if (!textbooks.length) {
       return { textbooks: [], chapters: [] };
     }
     const chapters = await this.chapterRepo.find({
-      where: { textbookId: In(textbookIds) },
+      where: { textbookId: In(textbooks.map((item) => item.id)) },
       order: { orderNo: 'ASC', createdAt: 'ASC' },
     });
     return { textbooks, chapters };
   }
 
-  private async resolveSchoolCourseIds(
+  private async resolveVisibleTextbookIds(
     schoolId: string,
     courseId?: string,
   ): Promise<string[]> {
-    const where =
-      courseId && courseId !== 'shared'
-        ? { schoolId, id: courseId }
-        : { schoolId };
-    const rows = await this.courseRepo.find({
-      where,
-      select: ['id'],
+    if (courseId && courseId !== 'shared') {
+      const rows = await this.textbookRepo.find({
+        where: { courseId },
+        select: ['id'],
+      });
+      const ids = rows.map((item) => item.id);
+      if (!ids.length) return [];
+      const allowed = await this.dataSource.query(
+        `
+          SELECT DISTINCT textbook_id AS "textbookId"
+          FROM question_bank_textbook_schools
+          WHERE school_id = $1 AND textbook_id = ANY($2::uuid[])
+        `,
+        [schoolId, ids],
+      );
+      return allowed.map((item: any) => item.textbookId);
+    }
+    const rows = await this.dataSource.query(
+      `
+        SELECT DISTINCT textbook_id AS "textbookId"
+        FROM question_bank_textbook_schools
+        WHERE school_id = $1
+      `,
+      [schoolId],
+    );
+    return rows.map((item: any) => item.textbookId);
+  }
+
+  async listSchools() {
+    const rows = await this.dataSource.query(
+      `
+        SELECT DISTINCT school_id AS "schoolId"
+        FROM users
+        WHERE school_id IS NOT NULL AND school_id <> ''
+        ORDER BY school_id ASC
+      `,
+    );
+    return { items: rows };
+  }
+
+  async updateTextbookVisibility(textbookId: string, payload: QuestionBankVisibilityUpdateDto) {
+    const textbook = await this.textbookRepo.findOne({ where: { id: textbookId } });
+    if (!textbook) {
+      throw new NotFoundException('Textbook not found');
+    }
+    const schoolIds = this.normalizeSchoolIds(payload.schoolIds ?? []);
+    if (!schoolIds.length) {
+      throw new BadRequestException('至少保留一个可见学校');
+    }
+    await this.dataSource.transaction(async (manager) => {
+      await this.upsertTextbookVisibility(textbookId, schoolIds, manager);
     });
-    return rows.map((item) => item.id);
+    return { success: true, textbookId, schoolIds };
   }
 
   async getQuestion(id: string) {
@@ -236,9 +296,6 @@ export class QuestionBankService {
   private validatePayload(payload: QuestionBankImportDto) {
     if (!payload?.version) {
       throw new BadRequestException('Missing version');
-    }
-    if (!payload?.courseId) {
-      throw new BadRequestException('Missing courseId');
     }
     if (
       !payload.textbook?.textbookId ||
@@ -354,11 +411,12 @@ export class QuestionBankService {
   private async upsertTextbook(
     repo: Repository<TextbookEntity>,
     payload: QuestionBankImportDto,
+    courseId: string,
     userId: string,
   ): Promise<TextbookEntity> {
     const existing = await repo.findOne({
       where: {
-        courseId: payload.courseId,
+        courseId,
         externalId: payload.textbook.textbookId,
       },
     });
@@ -371,7 +429,7 @@ export class QuestionBankService {
     }
 
     const textbook = repo.create({
-      courseId: payload.courseId,
+      courseId,
       externalId: payload.textbook.textbookId,
       title: payload.textbook.title,
       subject: payload.textbook.subject,
@@ -379,6 +437,77 @@ export class QuestionBankService {
       createdBy: userId,
     });
     return repo.save(textbook);
+  }
+
+  private normalizeSchoolIds(schoolIds: string[]) {
+    return Array.from(
+      new Set(
+        schoolIds
+          .map((item) => String(item ?? '').trim())
+          .filter((item) => item.length > 0),
+      ),
+    );
+  }
+
+  private async resolveImportCourse(courseId: string | undefined, schoolId: string, userId: string) {
+    const normalizedCourseId = String(courseId ?? '').trim();
+
+    if (
+      normalizedCourseId &&
+      normalizedCourseId !== 'shared' &&
+      this.isUuid(normalizedCourseId)
+    ) {
+      const course = await this.courseRepo.findOne({
+        where: { id: normalizedCourseId, schoolId },
+      });
+      if (!course) {
+        throw new NotFoundException('Course not found');
+      }
+      return course;
+    }
+
+    const fallbackName = '__SHARED_QUESTION_BANK__';
+    const existing = await this.courseRepo.findOne({
+      where: { schoolId, name: fallbackName, semester: '共享题库' },
+    });
+    if (existing) {
+      return existing;
+    }
+    const entity = this.courseRepo.create({
+      schoolId,
+      name: fallbackName,
+      semester: '共享题库',
+      teacherId: userId,
+      status: CourseStatus.ACTIVE,
+    });
+    return this.courseRepo.save(entity);
+  }
+
+  private isUuid(value: string) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    );
+  }
+
+  private async upsertTextbookVisibility(
+    textbookId: string,
+    schoolIds: string[],
+    manager: DataSource | { query: (sql: string, params?: any[]) => Promise<any> },
+  ) {
+    await manager.query(
+      `DELETE FROM question_bank_textbook_schools WHERE textbook_id = $1`,
+      [textbookId],
+    );
+    for (const schoolId of schoolIds) {
+      await manager.query(
+        `
+          INSERT INTO question_bank_textbook_schools(textbook_id, school_id)
+          VALUES($1, $2)
+          ON CONFLICT (textbook_id, school_id) DO NOTHING
+        `,
+        [textbookId, schoolId],
+      );
+    }
   }
 
   private async upsertChapters(
@@ -666,7 +795,3 @@ export class QuestionBankService {
     return upper in QuestionType;
   }
 }
-
-
-
-

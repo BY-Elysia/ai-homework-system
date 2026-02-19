@@ -145,7 +145,32 @@ SYSTEM_PROMPT = """你是“作业AI批改引擎（AI Grading Engine）”。你
 - 不要输出多套备选答案，只输出一份最终 JSON。
 """
 
-SYSTEM_PROMPT_VERSION = "v1"
+HANDWRITING_PROMPT_SUFFIX = """
+
+========================
+七、手写识别专项规则（仅在 handwritingRecognition=true 时启用）
+========================
+你需要先判断图片主体是否为“手写作答”。
+
+1) 如果判断为手写：
+- 按正常流程批改。
+
+2) 如果判断为非手写（如纯打印文本、电子排版截图、明显非手写内容）：
+- 必须将 result.isUncertain 设为 true；
+- 必须在 uncertaintyReasons 中新增一条：
+  { "code": "NON_HANDWRITTEN", "message": "检测到非手写内容，建议教师复核" }
+- 必须下调 result.confidence，且不高于 0.35；
+- 必须在 result.comment 中明确说明“检测到非手写内容，置信度已下调，需要教师复核”。
+"""
+
+
+def build_system_prompt(handwriting_recognition: bool) -> str:
+    if handwriting_recognition:
+        return SYSTEM_PROMPT + HANDWRITING_PROMPT_SUFFIX
+    return SYSTEM_PROMPT
+
+
+SYSTEM_PROMPT_VERSION = "v2"
 PREFIX_CACHE_ENABLED = (
     os.getenv("AI_GRADING_PREFIX_CACHE_ENABLED", "true").lower() != "false"
 )
@@ -269,12 +294,14 @@ def encode_image_data_url(path: str) -> str:
     return f"data:{mime};base64,{b64}"
 
 
-def build_messages(json_text: str, image_data_urls: List[str]) -> List[Dict]:
+def build_messages(
+    json_text: str, image_data_urls: List[str], system_prompt: str
+) -> List[Dict]:
     # Build multi-modal input for the Responses API.
     user_text = "输入 JSON：\n" + json_text
     system_message = {
         "role": "system",
-        "content": [{"type": "input_text", "text": SYSTEM_PROMPT}],
+        "content": [{"type": "input_text", "text": system_prompt}],
     }
     user_content = []
     for image_url in image_data_urls:
@@ -301,6 +328,7 @@ def extract_options_payload(json_payload: Dict) -> Dict:
     return {
         "returnStudentMarkdown": options.get("returnStudentMarkdown", False),
         "minConfidence": options.get("minConfidence", 0.75),
+        "handwritingRecognition": options.get("handwritingRecognition", False),
     }
 
 
@@ -312,7 +340,9 @@ def extract_student_payload(json_payload: Dict, question_payload: Dict) -> Dict:
     }
 
 
-def build_prefix_messages(question_payload: Dict, options_payload: Dict) -> List[Dict]:
+def build_prefix_messages(
+    question_payload: Dict, options_payload: Dict, system_prompt: str
+) -> List[Dict]:
     payload = {
         "question": question_payload,
         "options": options_payload,
@@ -320,7 +350,7 @@ def build_prefix_messages(question_payload: Dict, options_payload: Dict) -> List
     user_text = "题目与评分细则：\n" + json.dumps(payload, ensure_ascii=False)
     system_message = {
         "role": "system",
-        "content": [{"type": "input_text", "text": SYSTEM_PROMPT}],
+        "content": [{"type": "input_text", "text": system_prompt}],
     }
     user_message = {
         "role": "user",
@@ -382,6 +412,7 @@ def ensure_prefix_response_id(
     model: str,
     question_payload: Dict,
     options_payload: Dict,
+    system_prompt: str,
 ) -> Optional[str]:
     global CACHE_AVAILABLE
     if not PREFIX_CACHE_ENABLED or not CACHE_AVAILABLE:
@@ -390,7 +421,9 @@ def ensure_prefix_response_id(
     if cached:
         return cached
 
-    prefix_messages = build_prefix_messages(question_payload, options_payload)
+    prefix_messages = build_prefix_messages(
+        question_payload, options_payload, system_prompt
+    )
     payload = {
         "model": model,
         "input": prefix_messages,
@@ -495,16 +528,18 @@ def main() -> int:
     if not isinstance(json_payload, dict):
         json_payload = {}
     json_text = json.dumps(json_payload, ensure_ascii=False, indent=2)
+    question_payload = extract_question_payload(json_payload)
+    options_payload = extract_options_payload(json_payload)
+    student_payload = extract_student_payload(json_payload, question_payload)
+    handwriting_recognition = bool(options_payload.get("handwritingRecognition"))
+    system_prompt = build_system_prompt(handwriting_recognition)
+
     image_paths = args.image or []
     if len(image_paths) > 4:
         print("Too many images; provide up to 4.", file=sys.stderr)
         return 2
     image_data_urls = [encode_image_data_url(path) for path in image_paths]
-    full_messages = build_messages(json_text, image_data_urls)
-
-    question_payload = extract_question_payload(json_payload)
-    options_payload = extract_options_payload(json_payload)
-    student_payload = extract_student_payload(json_payload, question_payload)
+    full_messages = build_messages(json_text, image_data_urls, system_prompt)
 
     cache_key = None
     prefix_response_id = None
@@ -529,6 +564,7 @@ def main() -> int:
                 model=model,
                 question_payload=question_payload,
                 options_payload=options_payload,
+                system_prompt=system_prompt,
             )
         except ApiError as exc:
             raise RuntimeError(f"Prefix cache warmup failed: {exc.body}") from exc

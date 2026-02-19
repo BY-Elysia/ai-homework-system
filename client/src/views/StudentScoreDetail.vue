@@ -58,6 +58,13 @@
                   v-mathjax
                   v-html="renderMath(currentQuestion.promptText)"
                 />
+                <div
+                  v-if="currentQuestion.standardAnswerText"
+                  class="detail-answer"
+                >
+                  <div class="detail-sub-title">参考答案</div>
+                  <div class="detail-text" v-mathjax v-html="renderMath(currentQuestion.standardAnswerText)" />
+                </div>
 
                 <div class="detail-submission">
                   <div class="detail-sub-title">我的提交</div>
@@ -132,6 +139,7 @@ type ScoreDetailQuestion = {
   questionId: string
   questionIndex: number
   promptText?: string | null
+  standardAnswerText?: string | null
   weight: number
   maxScore: number
   score: number | null
@@ -291,6 +299,14 @@ onMounted(async () => {
 .detail-sub {
   display: grid;
   gap: 8px;
+}
+
+.detail-answer {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(90, 140, 255, 0.08);
 }
 
 .detail-sub-item {

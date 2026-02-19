@@ -10,7 +10,12 @@ export type AssignmentSummary = {
   totalScore?: number
   deadline?: string | null
   status: string
+  aiEnabled?: boolean
   submitted?: boolean
+  visibleAfterSubmit?: boolean
+  allowViewAnswer?: boolean
+  allowViewScore?: boolean
+  handwritingRecognition?: boolean
 }
 
 type AssignmentListResponse = {
@@ -47,6 +52,10 @@ export type AssignmentSnapshotQuestion = {
 export type AssignmentSnapshotResponse = {
   assignmentSnapshotId: string
   assignmentId: string
+  visibleAfterSubmit?: boolean
+  allowViewAnswer?: boolean
+  allowViewScore?: boolean
+  handwritingRecognition?: boolean
   questions: AssignmentSnapshotQuestion[]
   createdAt: string
 }
@@ -58,6 +67,10 @@ export type CreateAssignmentRequest = {
   deadline?: string
   totalScore?: number
   aiEnabled?: boolean
+  visibleAfterSubmit?: boolean
+  allowViewAnswer?: boolean
+  allowViewScore?: boolean
+  handwritingRecognition?: boolean
   selectedQuestionIds?: string[]
 }
 
@@ -151,6 +164,11 @@ export async function updateAssignmentGradingConfig(
   payload: {
     deadline?: string
     totalScore?: number
+    aiEnabled?: boolean
+    visibleAfterSubmit?: boolean
+    allowViewAnswer?: boolean
+    allowViewScore?: boolean
+    handwritingRecognition?: boolean
     questionWeights?: Array<{ questionId: string; weight: number }>
   },
 ) {

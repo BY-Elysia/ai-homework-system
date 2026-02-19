@@ -119,6 +119,7 @@ export class ManualGradingService {
         INNER JOIN assignments a ON a.id = aws.assignment_id
         INNER JOIN courses c ON c.id = a.course_id
         WHERE aws.student_id = $1
+          AND a.allow_view_score = true
         ORDER BY aws.updated_at DESC
       `,
       [studentId],
@@ -152,6 +153,7 @@ export class ManualGradingService {
           AND sub.student_id = cs.student_id
         WHERE cs.student_id = $1
           AND cs.status = 'ENROLLED'
+          AND a.allow_view_score = true
           AND a.status = 'CLOSED'
           AND sub.id IS NULL
       `,
@@ -183,6 +185,15 @@ export class ManualGradingService {
   async getAssignmentFinalGrading(studentId: string, assignmentId: string) {
     if (!studentId || !assignmentId) {
       throw new BadRequestException('缺少参数');
+    }
+    const assignment = await this.assignmentRepo.findOne({
+      where: { id: assignmentId },
+    });
+    if (!assignment) {
+      throw new NotFoundException('作业不存在');
+    }
+    if (!assignment.allowViewScore) {
+      throw new NotFoundException('成绩暂不可查看');
     }
 
     const weightedScoreRow = await this.weightedScoreRepo.findOne({
@@ -220,12 +231,6 @@ export class ManualGradingService {
       .getRawMany();
 
     if (!rows.length) {
-      const assignment = await this.assignmentRepo.findOne({
-        where: { id: assignmentId },
-      });
-      if (!assignment) {
-        throw new NotFoundException('作业不存在');
-      }
       const course = await this.courseRepo.findOne({
         where: { id: assignment.courseId },
       });
@@ -253,6 +258,7 @@ export class ManualGradingService {
           questionId?: string;
           questionIndex?: number;
           prompt?: { text?: string };
+          standardAnswer?: { text?: string };
           rubric?: Array<{ maxScore?: number }>;
           weight?: number;
         }>;
@@ -273,6 +279,9 @@ export class ManualGradingService {
             questionId: question?.questionId ?? null,
             questionIndex,
             promptText: question?.prompt?.text ?? '',
+            standardAnswerText: assignment.allowViewAnswer
+              ? question?.standardAnswer?.text ?? ''
+              : null,
             weight: Number(question?.weight ?? 0),
             maxScore,
             score: null,
@@ -292,6 +301,8 @@ export class ManualGradingService {
         totalScore: Number(assignment.totalScore ?? 0),
         weightedScore: null,
         updatedAt: deadline ?? assignment.updatedAt,
+        allowViewAnswer: assignment.allowViewAnswer,
+        allowViewScore: assignment.allowViewScore,
         questions,
         status: 'UNSUBMITTED',
       };
@@ -331,10 +342,15 @@ export class ManualGradingService {
         snapshotInfo?.questionWeight.get(questionIndex) ??
         (snapshotInfo?.defaultWeight ?? 0);
       const questionPrompt = snapshotInfo?.questionPrompt.get(questionIndex) ?? '';
+      const standardAnswerText =
+        assignment.allowViewAnswer
+          ? snapshotInfo?.questionAnswer.get(questionIndex) ?? ''
+          : null;
       return {
         questionId: row.questionId,
         questionIndex,
         promptText: questionPrompt,
+        standardAnswerText,
         weight,
         maxScore,
         score: Number(row.totalScore ?? 0),
@@ -350,6 +366,8 @@ export class ManualGradingService {
       courseId,
       courseName,
       totalScore: assignmentTotalScore,
+      allowViewAnswer: assignment.allowViewAnswer,
+      allowViewScore: assignment.allowViewScore,
       weightedScore:
         weightedScoreValue !== null
           ? Number(weightedScoreValue.toFixed(2))
@@ -543,6 +561,7 @@ export class ManualGradingService {
       questions?: Array<{
         questionIndex?: number;
         prompt?: { text?: string };
+        standardAnswer?: { text?: string };
         rubric?: Array<{ rubricItemKey?: string; maxScore?: number }>;
         weight?: number;
       }>;
@@ -553,6 +572,7 @@ export class ManualGradingService {
     const questionMaxScore = new Map<number, number>();
     const questionWeight = new Map<number, number>();
     const questionPrompt = new Map<number, string>();
+    const questionAnswer = new Map<number, string>();
     let weightSum = 0;
     let count = 0;
 
@@ -576,6 +596,7 @@ export class ManualGradingService {
         weightSum += weight;
       }
       questionPrompt.set(index, question.prompt?.text ?? '');
+      questionAnswer.set(index, question.standardAnswer?.text ?? '');
     }
 
     let defaultWeight = 0;
@@ -586,6 +607,7 @@ export class ManualGradingService {
       questionMaxScore,
       questionWeight,
       questionPrompt,
+      questionAnswer,
       defaultWeight,
       questionCount: count,
     };

@@ -46,11 +46,18 @@ export class AssignmentService {
       throw new BadRequestException('新建作业仅支持 DRAFT 状态');
     }
 
+    const trimmedTitle = (dto.title ?? '').trim();
+    if (!trimmedTitle) {
+      throw new BadRequestException('作业标题不能为空');
+    }
+
     const selectedIds = dto.selectedQuestionIds ?? [];
     const newQuestions = dto.questions ?? [];
     if (selectedIds.length === 0 && newQuestions.length === 0) {
       throw new BadRequestException('需要至少提供题库题或新建题目');
     }
+
+    await this.assertTitleNotDuplicated(dto.courseId, trimmedTitle);
 
     return this.dataSource.transaction(async (manager) => {
       const createdQuestionIds: string[] = [];
@@ -93,11 +100,15 @@ export class AssignmentService {
       const assignment = manager.create(AssignmentEntity, {
         courseId: dto.courseId,
         questionNo: dto.questionNo ?? null,
-        title: dto.title,
+        title: trimmedTitle,
         description: dto.description ?? null,
         deadline: dto.deadline ? new Date(dto.deadline) : null,
         totalScore: (dto.totalScore ?? 100).toFixed(2),
         aiEnabled: dto.aiEnabled ?? true,
+        visibleAfterSubmit: dto.visibleAfterSubmit ?? true,
+        allowViewAnswer: dto.allowViewAnswer ?? false,
+        allowViewScore: dto.allowViewScore ?? true,
+        handwritingRecognition: dto.handwritingRecognition ?? false,
         status: AssignmentStatus.DRAFT,
         selectedQuestionIds: [...createdQuestionIds, ...existingIds],
         currentSnapshotId: null,
@@ -129,10 +140,24 @@ export class AssignmentService {
       throw new BadRequestException('请使用 publish 接口发布作业');
     }
 
-    assignment.title = dto.title ?? assignment.title;
+    const nextTitle = dto.title !== undefined ? dto.title.trim() : assignment.title;
+    if (!nextTitle) {
+      throw new BadRequestException('作业标题不能为空');
+    }
+    if (nextTitle !== assignment.title) {
+      await this.assertTitleNotDuplicated(assignment.courseId, nextTitle, assignment.id);
+    }
+
+    assignment.title = nextTitle;
     assignment.description = dto.description ?? assignment.description;
     assignment.deadline = dto.deadline ? new Date(dto.deadline) : assignment.deadline;
     assignment.aiEnabled = dto.aiEnabled ?? assignment.aiEnabled;
+    assignment.visibleAfterSubmit =
+      dto.visibleAfterSubmit ?? assignment.visibleAfterSubmit;
+    assignment.allowViewAnswer = dto.allowViewAnswer ?? assignment.allowViewAnswer;
+    assignment.allowViewScore = dto.allowViewScore ?? assignment.allowViewScore;
+    assignment.handwritingRecognition =
+      dto.handwritingRecognition ?? assignment.handwritingRecognition;
     assignment.totalScore =
       typeof dto.totalScore === 'number'
         ? dto.totalScore.toFixed(2)
@@ -174,6 +199,13 @@ export class AssignmentService {
         ? Number(dto.totalScore.toFixed(2))
         : Number(assignment.totalScore ?? 0);
     const nextWeights = dto.questionWeights ?? null;
+    const nextVisibleAfterSubmit =
+      dto.visibleAfterSubmit ?? assignment.visibleAfterSubmit;
+    const nextAllowViewAnswer = dto.allowViewAnswer ?? assignment.allowViewAnswer;
+    const nextAllowViewScore = dto.allowViewScore ?? assignment.allowViewScore;
+    const nextAiEnabled = dto.aiEnabled ?? assignment.aiEnabled;
+    const nextHandwritingRecognition =
+      dto.handwritingRecognition ?? assignment.handwritingRecognition;
     const needRefreshSnapshot = Array.isArray(nextWeights);
     const totalScoreChanged =
       typeof dto.totalScore === 'number' &&
@@ -183,6 +215,11 @@ export class AssignmentService {
     return this.dataSource.transaction(async (manager) => {
       assignment.deadline = nextDeadline;
       assignment.totalScore = nextTotalScore.toFixed(2);
+      assignment.visibleAfterSubmit = nextVisibleAfterSubmit;
+      assignment.allowViewAnswer = nextAllowViewAnswer;
+      assignment.allowViewScore = nextAllowViewScore;
+      assignment.aiEnabled = nextAiEnabled;
+      assignment.handwritingRecognition = nextHandwritingRecognition;
       assignment.updatedAt = new Date();
 
       if (assignment.status !== AssignmentStatus.ARCHIVED && assignment.deadline) {
@@ -354,7 +391,10 @@ export class AssignmentService {
     return { success: true };
   }
 
-  async getCurrentSnapshot(assignmentId: string) {
+  async getCurrentSnapshot(
+    assignmentId: string,
+    payload?: { sub: string; schoolId: string; role: UserRole },
+  ) {
     const assignment = await this.assignmentRepo.findOne({
       where: { id: assignmentId },
     });
@@ -364,7 +404,60 @@ export class AssignmentService {
     if (!assignment.currentSnapshotId) {
       throw new NotFoundException('作业尚未发布');
     }
-    return this.getSnapshotById(assignment.currentSnapshotId);
+    const snapshot = await this.getSnapshotById(assignment.currentSnapshotId);
+
+    if (payload?.role === UserRole.STUDENT) {
+      const enrolled = await this.dataSource.query(
+        `
+          SELECT 1
+          FROM course_students cs
+          INNER JOIN courses c ON c.id = cs.course_id
+          WHERE cs.course_id = $1
+            AND cs.student_id = $2
+            AND cs.status = 'ENROLLED'
+            AND c.school_id = $3
+          LIMIT 1
+        `,
+        [assignment.courseId, payload.sub, payload.schoolId],
+      );
+      if (!enrolled.length) {
+        throw new NotFoundException('作业不存在');
+      }
+
+      if (!assignment.visibleAfterSubmit) {
+        const submitted = await this.dataSource.query(
+          `
+            SELECT 1
+            FROM submissions
+            WHERE assignment_id = $1
+              AND student_id = $2
+            LIMIT 1
+          `,
+          [assignment.id, payload.sub],
+        );
+        if (submitted.length) {
+          throw new NotFoundException('作业提交后不可查看');
+        }
+      }
+    }
+
+    const questions = Array.isArray(snapshot.questions) ? snapshot.questions : [];
+    const normalizedQuestions =
+      payload?.role === UserRole.STUDENT && !assignment.allowViewAnswer
+        ? questions.map((question: any) => ({
+            ...question,
+            standardAnswer: null,
+          }))
+        : questions;
+
+    return {
+      ...snapshot,
+      questions: normalizedQuestions,
+      visibleAfterSubmit: assignment.visibleAfterSubmit,
+      allowViewAnswer: assignment.allowViewAnswer,
+      allowViewScore: assignment.allowViewScore,
+      handwritingRecognition: assignment.handwritingRecognition,
+    };
   }
 
   async listOpenAssignmentsForStudent(studentId: string, schoolId: string) {
@@ -388,7 +481,11 @@ export class AssignmentService {
             )
             THEN true
             ELSE false
-          END AS "submitted"
+          END AS "submitted",
+          a.visible_after_submit AS "visibleAfterSubmit",
+          a.allow_view_answer AS "allowViewAnswer",
+          a.allow_view_score AS "allowViewScore",
+          a.handwriting_recognition AS "handwritingRecognition"
         FROM assignments a
         INNER JOIN courses c ON c.id = a.course_id
         INNER JOIN course_students cs ON cs.course_id = a.course_id
@@ -412,6 +509,10 @@ export class AssignmentService {
         deadline: row.deadline ?? null,
         status: row.status,
         submitted: row.submitted === true,
+        visibleAfterSubmit: row.visibleAfterSubmit === true,
+        allowViewAnswer: row.allowViewAnswer === true,
+        allowViewScore: row.allowViewScore === true,
+        handwritingRecognition: row.handwritingRecognition === true,
       })),
     };
   }
@@ -427,7 +528,21 @@ export class AssignmentService {
           c.name AS "courseName",
           a.description,
           a.deadline,
-          a.status
+          a.status,
+          CASE
+            WHEN EXISTS (
+              SELECT 1
+              FROM submissions s
+              WHERE s.assignment_id = a.id
+                AND s.student_id = $1
+            )
+            THEN true
+            ELSE false
+          END AS "submitted",
+          a.visible_after_submit AS "visibleAfterSubmit",
+          a.allow_view_answer AS "allowViewAnswer",
+          a.allow_view_score AS "allowViewScore",
+          a.handwriting_recognition AS "handwritingRecognition"
         FROM assignments a
         INNER JOIN courses c ON c.id = a.course_id
         INNER JOIN course_students cs ON cs.course_id = a.course_id
@@ -448,6 +563,11 @@ export class AssignmentService {
         description: row.description ?? null,
         deadline: row.deadline ?? null,
         status: row.status,
+        submitted: row.submitted === true,
+        visibleAfterSubmit: row.visibleAfterSubmit === true,
+        allowViewAnswer: row.allowViewAnswer === true,
+        allowViewScore: row.allowViewScore === true,
+        handwritingRecognition: row.handwritingRecognition === true,
       })),
     };
   }
@@ -765,6 +885,10 @@ export class AssignmentService {
       deadline: assignment.deadline ?? null,
       status: assignment.status,
       aiEnabled: assignment.aiEnabled,
+      visibleAfterSubmit: assignment.visibleAfterSubmit,
+      allowViewAnswer: assignment.allowViewAnswer,
+      allowViewScore: assignment.allowViewScore,
+      handwritingRecognition: assignment.handwritingRecognition,
       totalScore: Number(assignment.totalScore ?? 0),
       questionNo: assignment.questionNo ?? null,
       selectedQuestionIds: assignment.selectedQuestionIds,
@@ -788,5 +912,25 @@ export class AssignmentService {
       `,
       [schoolId],
     );
+  }
+
+  private async assertTitleNotDuplicated(
+    courseId: string,
+    title: string,
+    excludeAssignmentId?: string,
+  ) {
+    const qb = this.assignmentRepo
+      .createQueryBuilder('a')
+      .where('a.courseId = :courseId', { courseId })
+      .andWhere('LOWER(TRIM(a.title)) = LOWER(TRIM(:title))', { title });
+
+    if (excludeAssignmentId) {
+      qb.andWhere('a.id != :excludeAssignmentId', { excludeAssignmentId });
+    }
+
+    const count = await qb.getCount();
+    if (count > 0) {
+      throw new BadRequestException('同一课程下作业标题已存在，请更换后再发布');
+    }
   }
 }

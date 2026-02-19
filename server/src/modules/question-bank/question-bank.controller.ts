@@ -11,9 +11,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
+import { UserRole } from '../auth/entities/user.entity';
 import { QuestionBankService } from './question-bank.service';
 import {
   QuestionBankImportDto,
+  QuestionBankVisibilityUpdateDto,
   QuestionBankUpdateDto,
 } from './dto/question-bank.dto';
 
@@ -40,6 +44,23 @@ export class QuestionBankController {
       message: '题库导入成功',
       data: result,
     };
+  }
+
+  @Get('schools')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async listSchools() {
+    return this.questionBankService.listSchools();
+  }
+
+  @Patch('textbooks/:id/visibility')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async updateTextbookVisibility(
+    @Param('id') id: string,
+    @Body() body: QuestionBankVisibilityUpdateDto,
+  ) {
+    return this.questionBankService.updateTextbookVisibility(id, body);
   }
 
   @Get()

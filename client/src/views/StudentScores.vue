@@ -15,10 +15,10 @@
         <div v-for="course in courseList" :key="course.courseId" class="course-card">
           <div class="course-main">
             <div class="course-title">{{ course.name }}</div>
-            <div class="course-sub">成绩 {{ course.total }} 条</div>
+            <div class="course-sub">作业 {{ course.total }} 份</div>
           </div>
           <div class="course-meta">
-            <span class="course-pill">已评分 {{ course.total }}</span>
+            <span class="course-pill">可见 {{ course.viewable }} 份</span>
           </div>
           <button class="task-action" @click="goCourse(course.courseId)">查看成绩</button>
         </div>
@@ -35,26 +35,54 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import StudentLayout from '../components/StudentLayout.vue'
 import { listMyScores, type ScoreSummary } from '../api/score'
+import { listAllAssignments, type AssignmentSummary } from '../api/assignment'
 import { useStudentProfile } from '../composables/useStudentProfile'
 
 const { profileName, profileAccount, refreshProfile } = useStudentProfile()
 const scoreItems = ref<ScoreSummary[]>([])
+const assignmentItems = ref<AssignmentSummary[]>([])
 const scoreError = ref('')
 const router = useRouter()
 
 const courseList = computed(() => {
-  const map = new Map<string, { courseId: string; name: string; total: number }>()
-  scoreItems.value.forEach((item) => {
+  const map = new Map<string, { courseId: string; name: string; total: number; viewable: number }>()
+  const assignmentCourses = new Set<string>()
+  assignmentItems.value.forEach((item) => {
     const courseId = item.courseId
     if (!courseId) return
+    assignmentCourses.add(courseId)
     if (!map.has(courseId)) {
       map.set(courseId, {
         courseId,
-        name: item.courseName ?? item.courseId,
+        name: item.courseName ?? courseId,
         total: 0,
+        viewable: 0,
       })
     }
-    map.get(courseId)!.total += 1
+    const target = map.get(courseId)!
+    target.total += 1
+    if (item.allowViewScore !== false) {
+      target.viewable += 1
+    }
+  })
+
+  scoreItems.value.forEach((item) => {
+    const courseId = item.courseId
+    if (!courseId) return
+    if (assignmentCourses.has(courseId)) return
+    if (!map.has(courseId)) {
+      map.set(courseId, {
+        courseId,
+        name: item.courseName ?? courseId,
+        total: 0,
+        viewable: 0,
+      })
+    }
+    const target = map.get(courseId)!
+    target.total += 1
+    if (item.status === 'GRADED') {
+      target.viewable += 1
+    }
   })
   return Array.from(map.values())
 })
@@ -68,8 +96,12 @@ onMounted(async () => {
   await refreshProfile()
 
   try {
-    const response = await listMyScores()
-    scoreItems.value = response?.items ?? []
+    const [scoreResponse, assignmentResponse] = await Promise.all([
+      listMyScores(),
+      listAllAssignments(),
+    ])
+    scoreItems.value = scoreResponse?.items ?? []
+    assignmentItems.value = assignmentResponse?.items ?? []
   } catch (err) {
     scoreError.value = err instanceof Error ? err.message : '加载成绩失败'
   }

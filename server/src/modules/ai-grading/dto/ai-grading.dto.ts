@@ -22,6 +22,11 @@ export class AiRunOptionsDto {
 
   @ApiPropertyOptional({ description: 'Sampling temperature.' })
   temperature?: number;
+
+  @ApiPropertyOptional({
+    description: 'Enable handwriting-focused grading prompt.',
+  })
+  handwritingRecognition?: boolean;
 }
 
 export class UncertaintyPolicyDto {

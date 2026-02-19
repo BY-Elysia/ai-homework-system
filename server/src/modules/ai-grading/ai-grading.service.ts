@@ -70,6 +70,17 @@ export class AiGradingService {
       }
     }
 
+    const normalizedDto: TriggerAiGradingDto = {
+      ...dto,
+      options: {
+        ...(dto.options ?? {}),
+        handwritingRecognition:
+          dto.options?.handwritingRecognition ??
+          assignment.handwritingRecognition ??
+          false,
+      },
+    };
+
     const job = this.jobRepo.create({
       submissionVersionId,
       assignmentSnapshotId,
@@ -78,7 +89,7 @@ export class AiGradingService {
     });
     try {
       const saved = await this.jobRepo.save(job);
-      await this.queue.enqueue(saved.id, dto);
+      await this.queue.enqueue(saved.id, normalizedDto);
       return {
         job: {
           aiJobId: saved.id,

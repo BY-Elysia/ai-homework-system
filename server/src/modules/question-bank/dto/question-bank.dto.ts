@@ -62,10 +62,15 @@ export interface GroupQuestionInput extends BaseQuestionInput {
 
 export interface QuestionBankImportDto {
   version: string;
-  courseId: string;
+  courseId?: string;
+  visibleSchoolIds?: string[];
   textbook: TextbookInput;
   chapters: ChapterInput[];
   questions: Array<LeafQuestionInput | GroupQuestionInput>;
+}
+
+export interface QuestionBankVisibilityUpdateDto {
+  schoolIds: string[];
 }
 
 export interface QuestionBankUpdateDto {

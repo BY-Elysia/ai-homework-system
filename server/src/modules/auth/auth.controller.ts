@@ -98,7 +98,7 @@ export class AuthController {
 
   @Post('register/bulk')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.TEACHER)
   @UseInterceptors(FileInterceptor('file'))
   async registerBulk(
     @UploadedFile() file: Express.Multer.File,
@@ -115,15 +115,22 @@ export class AuthController {
       throw new BadRequestException('文件内容为空');
     }
 
-    const payload = req.user as { schoolId?: string };
+    const payload = req.user as { sub?: string; role?: UserRole; schoolId?: string };
     const schoolId = payload?.schoolId;
     if (!schoolId) {
       throw new BadRequestException('缺少schoolId');
+    }
+    const requester = payload?.sub
+      ? await this.authService.getUserById(payload.sub)
+      : null;
+    if (!requester) {
+      throw new BadRequestException('用户信息不存在');
     }
 
     const body = req.body as {
       schoolId?: string;
       courseName?: string;
+      className?: string;
       semester?: string;
       status?: string;
     };
@@ -131,20 +138,41 @@ export class AuthController {
       throw new BadRequestException('学校信息不匹配');
     }
     const courseName = String(body?.courseName ?? '').trim();
+    const className = String(body?.className ?? '').trim();
     const semester = String(body?.semester ?? '').trim();
     const status = String(body?.status ?? '').trim();
+    if (!courseName) {
+      throw new BadRequestException('课程名称不能为空');
+    }
+    if (!semester) {
+      throw new BadRequestException('学期不能为空');
+    }
     const statusValue =
-      status === CourseStatus.ARCHIVED ? CourseStatus.ARCHIVED : CourseStatus.ACTIVE;
+      payload?.role === UserRole.TEACHER
+        ? CourseStatus.ACTIVE
+        : status === CourseStatus.ARCHIVED
+          ? CourseStatus.ARCHIVED
+          : CourseStatus.ACTIVE;
+    const normalizedCourseName =
+      payload?.role === UserRole.TEACHER
+        ? `${courseName}（${className}）`
+        : courseName;
+    if (payload?.role === UserRole.TEACHER && !className) {
+      throw new BadRequestException('班级名称不能为空');
+    }
 
     const result = await this.authService.registerBulkFromExcel(
       file.buffer,
       schoolId,
       ext,
       {
-        name: courseName,
+        name: normalizedCourseName,
         semester,
         status: statusValue,
       },
+      payload?.role === UserRole.TEACHER
+        ? { expectedTeacherAccount: requester.account }
+        : undefined,
     );
     return {
       code: 201,

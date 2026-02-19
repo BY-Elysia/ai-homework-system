@@ -117,16 +117,22 @@ export async function registerBulkUsers(
   payload: {
     schoolId: string
     courseName: string
+    className?: string
     semester: string
-    status: 'ACTIVE' | 'ARCHIVED'
+    status?: 'ACTIVE' | 'ARCHIVED'
   },
 ) {
   const form = new FormData()
   form.append('file', file)
   form.append('schoolId', payload.schoolId)
   form.append('courseName', payload.courseName)
+  if (payload.className) {
+    form.append('className', payload.className)
+  }
   form.append('semester', payload.semester)
-  form.append('status', payload.status)
+  if (payload.status) {
+    form.append('status', payload.status)
+  }
   return httpRequest<BulkRegisterResponse>('/auth/register/bulk', {
     method: 'POST',
     body: form,

@@ -80,3 +80,27 @@ export async function updateCourse(
     body: payload,
   })
 }
+
+export async function deleteCourse(courseId: string) {
+  return httpRequest<{ success: boolean }>(`/courses/${courseId}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function addCourseStudent(courseId: string, account: string, name: string) {
+  return httpRequest<{
+    success: boolean
+    created: boolean
+    defaultPassword: string | null
+    student: { studentId: string; name?: string | null; account?: string | null }
+  }>(`/courses/${courseId}/students`, {
+    method: 'POST',
+    body: { account, name },
+  })
+}
+
+export async function removeCourseStudent(courseId: string, studentId: string) {
+  return httpRequest<{ success: boolean }>(`/courses/${courseId}/students/${studentId}`, {
+    method: 'DELETE',
+  })
+}

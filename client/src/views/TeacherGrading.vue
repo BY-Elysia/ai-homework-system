@@ -1,7 +1,7 @@
 <template>
   <TeacherLayout
     title="作业批改"
-    subtitle="查看 AI 结果并保存本题成绩，完成后发布成绩"
+    subtitle="查看 AI 结果并确认本题成绩"
     :profile-name="profileName"
     :profile-account="profileAccount"
     brand-sub="作业批改"
@@ -20,17 +20,15 @@
       <div class="panel-title panel-title-row">
         <div>
           学生提交详情
-          <span class="badge" v-if="selectedSubmission">
-            {{ selectedSubmission.student.name || selectedSubmission.student.account || '学生' }}
+          <span class="badge" v-if="selectedStudent">
+            {{ selectedStudent.name || selectedStudent.account || '学生' }}
           </span>
         </div>
         <button class="ghost-action" @click="backToList">返回提交列表</button>
       </div>
 
       <div v-if="loadError" class="task-empty">{{ loadError }}</div>
-      <div v-else-if="!selectedSubmission" class="task-empty">提交不存在</div>
-
-      <div v-else class="detail-body">
+      <div v-else-if="selectedStudentId" class="detail-body">
         <div class="question-tabs">
           <div class="question-tabs-header">
             <div class="question-tabs-title">作业题号</div>
@@ -200,22 +198,17 @@
                 />
               <div class="grading-actions">
                   <template v-if="selectedSubmission && canEditCurrent">
-                    <button class="task-action" :disabled="saving" @click="submitGrading(false)">
-                      {{ saving ? '提交中...' : '确认本题成绩' }}
-                    </button>
                     <button class="task-action ghost" :disabled="saving" @click="submitGrading(true)">
-                      直接采用 AI
+                      采用AI评语
                     </button>
                   </template>
                   <template v-else-if="selectedSubmission && selectedSubmission.isFinal">
-                    <div class="graded-hint">已确认本题成绩</div>
                     <button class="task-action ghost" type="button" @click="startEdit">
                       修改成绩
                     </button>
                   </template>
                 <div v-else class="graded-hint">该学生未提交，无法评分</div>
                 <div v-if="saveError" class="ai-error">{{ saveError }}</div>
-                <div v-if="saveSuccess" class="ai-success">已保存本题成绩</div>
               </div>
               <div class="publish-actions">
                 <div class="publish-button-row">
@@ -230,24 +223,21 @@
                   <button
                     class="task-action"
                     type="button"
-                    :disabled="publishLoading || !allFinalForStudent || publishLocked"
-                    @click="publishScores"
+                    :disabled="saving || !selectedSubmission || !canEditCurrent || !hasCurrentChanges"
+                    @click="confirmCurrentChanges"
                   >
-                    {{ publishLoading ? '发布中...' : '发布成绩' }}
+                    {{ saving ? '确认中...' : '确认修改' }}
                   </button>
                 </div>
                 <div v-if="rerunError" class="ai-error">{{ rerunError }}</div>
-                <div v-if="publishError" class="ai-error">{{ publishError }}</div>
-                <div v-if="publishSuccess" class="ai-success">已发布成绩</div>
-                <div v-if="!allFinalForStudent" class="graded-hint">
-                  需先确认该学生全部题目成绩
-                </div>
+                <div v-if="saveError" class="ai-error">{{ saveError }}</div>
               </div>
             </div>
           </div>
           </div>
         </div>
       </div>
+      <div v-else class="task-empty">暂无学生</div>
     </section>
   </TeacherLayout>
 </template>
@@ -261,10 +251,10 @@ import { getAssignmentSnapshot } from '../api/assignment'
 import { listMissingByAssignment, listSubmissionsByAssignment } from '../api/teacherGrading'
 import { getAiJobStatus, getAiGradingResult, runAiGrading } from '../api/aiGrading'
 import { getFinalGrading, submitFinalGrading } from '../api/grading'
-import { publishAssignmentScores } from '../api/score'
 import { API_BASE_URL } from '../api/http'
 import type { AiGradingResult } from '../api/aiGrading'
 import type { AssignmentSnapshotQuestion } from '../api/assignment'
+import { showAppToast } from '../composables/useAppToast'
 
 type GradingRow = {
   questionIndex: number
@@ -363,12 +353,16 @@ const currentQuestion = computed(() => {
   return questions.value.find((q) => q.questionId === selectedQuestionId.value) || null
 })
 
+const selectedStudent = computed(() =>
+  students.value.find((student) => student.studentId === selectedStudentId.value) || null,
+)
+
 const submissionStatusLabel = computed(() => {
   if (!selectedSubmission.value) return '未提交'
   const isFinal = Boolean(selectedSubmission.value.isFinal ?? selectedSubmission.value.status === 'FINAL')
-  if (isFinal) return '已批改'
+  if (isFinal) return '已确认'
   if (selectedSubmission.value.aiIsUncertain) return '有异议'
-  return '待批改'
+  return '待确认'
 })
 
 const submissionStatusTone = computed(() => {
@@ -397,7 +391,7 @@ const studentsWithStatus = computed(() =>
         return submission && Boolean(submission.isFinal ?? submission.status === 'FINAL')
       })
     if (allFinal) {
-      return { ...student, statusLabel: '已批改', statusTone: 'graded' }
+      return { ...student, statusLabel: '已确认', statusTone: 'graded' }
     }
     const hasObjection = existing.some(
       (submission) =>
@@ -409,7 +403,7 @@ const studentsWithStatus = computed(() =>
     }
     return {
       ...student,
-      statusLabel: '待批改',
+      statusLabel: '待确认',
       statusTone: 'pending',
     }
   }),
@@ -417,8 +411,8 @@ const studentsWithStatus = computed(() =>
 
 const groupedStudents = computed(() => {
   const groups = [
-    { key: 'graded', title: '已批改', items: [] as typeof studentsWithStatus.value },
-    { key: 'pending', title: '待批改', items: [] as typeof studentsWithStatus.value },
+    { key: 'graded', title: '已确认', items: [] as typeof studentsWithStatus.value },
+    { key: 'pending', title: '待确认', items: [] as typeof studentsWithStatus.value },
     { key: 'objection', title: '有异议', items: [] as typeof studentsWithStatus.value },
     { key: 'missing', title: '未提交', items: [] as typeof studentsWithStatus.value },
   ]
@@ -446,12 +440,9 @@ const saving = ref(false)
 const rerunLoading = ref(false)
 const rerunError = ref('')
 const saveError = ref('')
-const saveSuccess = ref(false)
 const editingOverride = ref(false)
-const publishLoading = ref(false)
-const publishError = ref('')
-const publishSuccess = ref(false)
-const publishOverrideByStudent = ref<Record<string, { published: boolean; dirty: boolean }>>({})
+const baselineScore = ref(0)
+const baselineComment = ref('')
 
 const apiBaseOrigin = API_BASE_URL.replace(/\/api\/v1\/?$/, '')
 
@@ -471,13 +462,11 @@ const renderMath = (text?: string) => {
 const selectQuestion = (questionId: string) => {
   selectedQuestionId.value = questionId
   editingOverride.value = false
-  saveSuccess.value = false
 }
 
 const selectStudent = (studentId: string) => {
   selectedStudentId.value = studentId
   editingOverride.value = false
-  saveSuccess.value = false
 }
 
 const toggleGroup = (key: string) => {
@@ -504,37 +493,11 @@ const maxTotalScore = computed(() =>
   gradingItems.value.reduce((sum, item) => sum + (Number(item.maxScore) || 0), 0),
 )
 
-const allFinalForStudent = computed(() => {
-  if (!selectedStudentId.value) return false
-  if (!questions.value.length) return false
-  return questions.value.every((question) => {
-    const key = `${selectedStudentId.value}::${question.questionId}`
-    const submission = submissionByKey.value.get(key)
-    return submission && Boolean(submission.isFinal ?? submission.status === 'FINAL')
-  })
+const hasCurrentChanges = computed(() => {
+  const scoreChanged = Math.abs((Number(totalScoreInput.value) || 0) - (Number(baselineScore.value) || 0)) > 0.001
+  const commentChanged = (finalComment.value || '') !== (baselineComment.value || '')
+  return scoreChanged || commentChanged
 })
-
-const basePublishedForStudent = (studentId: string) => {
-  if (!studentId) return false
-  if (!questions.value.length) return false
-  return questions.value.every((question) => {
-    const key = `${studentId}::${question.questionId}`
-    const submission = submissionByKey.value.get(key)
-    return submission && submission.scorePublished === true
-  })
-}
-
-const publishStateForStudent = computed(() => {
-  const studentId = selectedStudentId.value
-  if (!studentId) return { published: false, dirty: false }
-  const override = publishOverrideByStudent.value[studentId]
-  if (override) return override
-  return { published: basePublishedForStudent(studentId), dirty: false }
-})
-
-const publishLocked = computed(
-  () => publishStateForStudent.value.published && !publishStateForStudent.value.dirty,
-)
 
 const canEditCurrent = computed(() => {
   if (!selectedSubmission.value) return false
@@ -605,6 +568,8 @@ const loadFinalForSubmission = async (submissionId: string, questionId: string) 
       0,
     )
     clampTotalScore()
+    baselineScore.value = Number(totalScoreInput.value) || 0
+    baselineComment.value = finalComment.value || ''
   } catch (err) {
     gradingItems.value = buildGradingItems(question, aiPanel.value.result)
     finalComment.value = ''
@@ -613,6 +578,8 @@ const loadFinalForSubmission = async (submissionId: string, questionId: string) 
       0,
     )
     clampTotalScore()
+    baselineScore.value = Number(totalScoreInput.value) || 0
+    baselineComment.value = finalComment.value || ''
   }
 }
 
@@ -672,6 +639,8 @@ const loadAiForSubmission = async (submissionId: string, questionId: string) => 
       0,
     )
     clampTotalScore()
+    baselineScore.value = Number(totalScoreInput.value) || 0
+    baselineComment.value = finalComment.value || ''
   } catch (err) {
     aiPanel.value = {
       statusLabel: '排队中',
@@ -685,6 +654,8 @@ const loadAiForSubmission = async (submissionId: string, questionId: string) => 
       0,
     )
     clampTotalScore()
+    baselineScore.value = Number(totalScoreInput.value) || 0
+    baselineComment.value = finalComment.value || ''
     void pollAiResult(submissionId)
   }
 }
@@ -724,11 +695,14 @@ const rerunCurrentAi = async () => {
           ? aiPanel.value.result.result.confidence
           : null
       submission.aiIsUncertain = Boolean(aiPanel.value.result.result?.isUncertain)
+      showAppToast('AI 重新批改完成', 'success')
     } else if (aiPanel.value.error) {
       submission.aiStatus = 'FAILED'
+      showAppToast('AI 重新批改失败', 'error')
     }
   } catch (err) {
     rerunError.value = err instanceof Error ? err.message : '重新批改失败'
+    showAppToast(rerunError.value || 'AI 重新批改失败', 'error')
   } finally {
     rerunLoading.value = false
   }
@@ -738,7 +712,6 @@ const submitGrading = async (forceAiAdopt: boolean) => {
   const submission = selectedSubmission.value
   if (!submission) return
   saveError.value = ''
-  saveSuccess.value = false
   saving.value = true
   try {
     if (forceAiAdopt) {
@@ -772,19 +745,15 @@ const submitGrading = async (forceAiAdopt: boolean) => {
       finalComment: finalComment.value || undefined,
       items,
     })
-    saveSuccess.value = true
     submission.isFinal = true
     submission.status = 'FINAL'
-    if (selectedStudentId.value) {
-      const prev = publishOverrideByStudent.value[selectedStudentId.value]
-      publishOverrideByStudent.value[selectedStudentId.value] = {
-        published: prev?.published ?? basePublishedForStudent(selectedStudentId.value),
-        dirty: true,
-      }
-    }
     editingOverride.value = false
+    baselineScore.value = Number(totalScoreInput.value) || 0
+    baselineComment.value = finalComment.value || ''
+    showAppToast(forceAiAdopt ? '已采用AI评语并确认修改' : '已确认修改', 'success')
   } catch (err) {
     saveError.value = err instanceof Error ? err.message : '保存失败'
+    showAppToast(saveError.value || '保存失败', 'error')
   } finally {
     saving.value = false
   }
@@ -794,34 +763,8 @@ const startEdit = () => {
   editingOverride.value = true
 }
 
-const publishScores = async () => {
-  if (!assignmentId.value || !selectedStudentId.value) return
-  if (!allFinalForStudent.value) {
-    publishError.value = '题目未全部确认'
-    return
-  }
-  if (publishLocked.value) {
-    publishError.value = '成绩已发布'
-    return
-  }
-  publishLoading.value = true
-  publishError.value = ''
-  publishSuccess.value = false
-  try {
-    await publishAssignmentScores(assignmentId.value, selectedStudentId.value)
-    publishSuccess.value = true
-    const studentId = selectedStudentId.value
-    submissions.value.forEach((item) => {
-      if (item.student?.studentId === studentId) {
-        item.scorePublished = true
-      }
-    })
-    publishOverrideByStudent.value[studentId] = { published: true, dirty: false }
-  } catch (err) {
-    publishError.value = err instanceof Error ? err.message : '发布失败'
-  } finally {
-    publishLoading.value = false
-  }
+const confirmCurrentChanges = async () => {
+  await submitGrading(false)
 }
 
 const backToList = () => {
@@ -852,15 +795,16 @@ watch(
     aiPanel.value = { statusLabel: '未加载', error: '', result: null }
     gradingItems.value = buildGradingItems(currentQuestion.value ?? undefined, null)
     finalComment.value = ''
+    totalScoreInput.value = 0
+    baselineScore.value = 0
+    baselineComment.value = ''
   },
   { immediate: true },
 )
 
 watch(
   () => selectedQuestionId.value,
-  () => {
-    saveSuccess.value = false
-  },
+  () => {},
 )
 
 const loadData = async () => {
@@ -868,7 +812,6 @@ const loadData = async () => {
     loadError.value = '缺少作业 ID'
     return
   }
-  saveSuccess.value = false
   saveError.value = ''
   try {
     const snapshot = await getAssignmentSnapshot(assignmentId.value)
@@ -1279,8 +1222,10 @@ watch([assignmentId, submissionVersionId], async () => {
 .ai-summary-hint {
   grid-column: 1;
   font-size: 12px;
-  color: rgba(26, 29, 51, 0.55);
+  color: #3f7de0;
   font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .ai-summary-status {
@@ -1298,11 +1243,6 @@ watch([assignmentId, submissionVersionId], async () => {
 .ai-error {
   font-size: 12px;
   color: #c84c4c;
-}
-
-.ai-success {
-  font-size: 12px;
-  color: #2e9d70;
 }
 
 .ai-summary {

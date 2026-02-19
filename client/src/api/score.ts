@@ -34,12 +34,15 @@ export async function getAssignmentScoreDetail(assignmentId: string) {
     courseName?: string | null
     totalScore: number | null
     weightedScore: number | null
+    allowViewAnswer?: boolean
+    allowViewScore?: boolean
     updatedAt: string | null
     status?: 'GRADED' | 'UNSUBMITTED'
     questions: Array<{
       questionId: string | null
       questionIndex: number
       promptText: string
+      standardAnswerText?: string | null
       weight: number
       maxScore: number
       score: number | null

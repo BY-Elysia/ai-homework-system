@@ -29,10 +29,14 @@
           @click="goCourse(course.id)"
         >
           <div class="course-title">{{ course.name }}</div>
-          <div class="course-sub">{{ course.semester }}</div>
-          <div class="course-meta">
-            <span class="status-tag" :class="course.status === 'ACTIVE' ? 'active' : 'archived'">
-              {{ course.status === 'ACTIVE' ? '开放中' : '已归档' }}
+          <div class="course-sub">
+            <span>{{ course.semester }}</span>
+            <span class="sub-split">·</span>
+            <span
+              class="status-inline"
+              :class="course.status === 'ACTIVE' ? 'active' : 'archived'"
+            >
+              {{ course.status === 'ACTIVE' ? '开放中' : '已结课' }}
             </span>
           </div>
         </div>
@@ -100,25 +104,24 @@ onMounted(async () => {
   margin-top: 6px;
   font-size: 12px;
   color: rgba(26, 29, 51, 0.6);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.course-meta {
-  margin-top: 10px;
+.sub-split {
+  color: rgba(26, 29, 51, 0.4);
 }
 
-.status-tag {
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
+.status-inline {
+  font-weight: 700;
 }
 
-.status-tag.active {
-  background: rgba(90, 140, 255, 0.15);
+.status-inline.active {
   color: #3b6fe1;
 }
 
-.status-tag.archived {
-  background: rgba(26, 29, 51, 0.12);
+.status-inline.archived {
   color: rgba(26, 29, 51, 0.6);
 }
 </style>

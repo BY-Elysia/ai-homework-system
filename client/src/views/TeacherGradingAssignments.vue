@@ -52,7 +52,11 @@
                 :disabled="retryingIds.has(task.id) || task.aiFailedCount <= 0"
                 @click="retryFailedAi(task.id)"
               >
-                {{ retryingIds.has(task.id) ? '重试中...' : `重试失败(${task.aiFailedCount})` }}
+                {{
+                  retryingIds.has(task.id)
+                    ? '重试中...'
+                    : `重试AI批改失败任务（${task.aiFailedCount}）`
+                }}
               </button>
               <button
                 class="task-action ghost"

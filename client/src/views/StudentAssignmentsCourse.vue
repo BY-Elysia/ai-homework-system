@@ -33,11 +33,12 @@
             </div>
           </div>
           <button
-            v-if="task.canSubmit"
+            v-if="task.showAction"
             class="task-action"
-            @click="goSubmit(task.id)"
+            :disabled="task.actionDisabled"
+            @click="handleTaskAction(task)"
           >
-            提交作业
+            {{ task.actionLabel }}
           </button>
         </div>
         <div v-if="!assignmentList.length" class="task-empty">
@@ -106,21 +107,28 @@ const assignmentList = computed(() =>
     .filter((item) => item.courseId === courseId.value)
     .map((item) => {
       const isFinal = finalAssignmentIds.value.has(item.id)
+      const submitted = item.submitted === true
       const expired = isExpired(item.deadline)
+      const canViewAfterSubmit = item.visibleAfterSubmit !== false
+      const canSubmitNow = !submitted && item.status === 'OPEN' && !expired
+      const showAction = submitted || canSubmitNow
+      const actionLabel = submitted ? '查看/修改作业' : '提交作业'
+      const actionDisabled = submitted ? !canViewAfterSubmit : false
+      let statusText = isFinal ? '状态：已批改' : submitted ? '状态：已提交' : statusLabel(item.status)
+      if (submitted && !canViewAfterSubmit) {
+        statusText = '状态：已提交（教师设置不可见）'
+      } else if (!submitted && expired) {
+        statusText = '状态：已截止'
+      }
       return {
         id: item.id,
         title: item.title,
         course: item.courseName ?? item.courseId,
         deadline: formatDeadline(item.deadline),
-        statusLabel: isFinal
-          ? '状态：已批改'
-          : expired
-            ? '状态：已截止'
-            : statusLabel(item.status),
-        canSubmit:
-          !isFinal &&
-          item.status === 'OPEN' &&
-          !expired,
+        statusLabel: statusText,
+        showAction,
+        actionLabel,
+        actionDisabled,
       }
     }),
 )
@@ -132,6 +140,11 @@ const courseTitle = computed(() => {
 
 const goSubmit = (assignmentId) => {
   router.push(`/student/assignments/${assignmentId}/submit`)
+}
+
+const handleTaskAction = (task) => {
+  if (task.actionDisabled) return
+  goSubmit(task.id)
 }
 
 const goBack = () => {
@@ -173,5 +186,11 @@ onMounted(async () => {
   font-size: 12px;
   color: rgba(26, 29, 51, 0.7);
   cursor: pointer;
+}
+
+.task-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 </style>

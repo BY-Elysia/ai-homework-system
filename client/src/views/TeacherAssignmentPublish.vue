@@ -48,9 +48,9 @@
       <div class="form-grid">
         <div class="form-row">
           <div class="form-field">
-            <label>选择课程</label>
+            <label>选择课程/班级</label>
             <select v-model="selectedCourseId" @change="handleCourseChange">
-              <option value="">请选择课程</option>
+              <option value="">请选择课程/班级</option>
               <option v-for="course in courses" :key="course.id" :value="course.id">
                 {{ course.name }}（{{ course.semester }}）
               </option>
@@ -77,6 +77,29 @@
             <div class="checkbox-row">
               <input id="ai-enabled" v-model="aiEnabled" type="checkbox" />
               <label for="ai-enabled">启用 AI 批改</label>
+            </div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label>学生端可见性</label>
+            <div class="checkbox-stack">
+              <label class="checkbox-item">
+                <input v-model="visibleAfterSubmit" type="checkbox" />
+                学生提交后作业仍可见
+              </label>
+              <label class="checkbox-item">
+                <input v-model="allowViewAnswer" type="checkbox" />
+                允许学生查看标准答案
+              </label>
+              <label class="checkbox-item">
+                <input v-model="allowViewScore" type="checkbox" />
+                教师批改后允许学生查看分数
+              </label>
+              <label class="checkbox-item">
+                <input v-model="handwritingRecognition" type="checkbox" />
+                启用手写识别批改模式
+              </label>
             </div>
           </div>
         </div>
@@ -270,7 +293,6 @@
         <span class="helper-text">发布后学生可在作业库看到</span>
       </div>
       <div v-if="submitError" class="form-error">{{ submitError }}</div>
-      <div v-if="submitSuccess" class="form-success">{{ submitSuccess }}</div>
     </section>
   </TeacherLayout>
 </template>
@@ -282,7 +304,8 @@ import TeacherLayout from '../components/TeacherLayout.vue'
 import { useTeacherProfile } from '../composables/useTeacherProfile'
 import { listCourses } from '../api/course'
 import { getQuestionBankStructure, listQuestionBank } from '../api/questionBank'
-import { createAssignment, publishAssignment } from '../api/assignment'
+import { createAssignment, listTeacherAssignments, publishAssignment } from '../api/assignment'
+import { showAppToast } from '../composables/useAppToast'
 
 const { profileName, profileAccount, refreshProfile } = useTeacherProfile()
 const router = useRouter()
@@ -302,6 +325,10 @@ const title = ref('')
 const description = ref('')
 const deadline = ref('')
 const aiEnabled = ref(true)
+const visibleAfterSubmit = ref(true)
+const allowViewAnswer = ref(false)
+const allowViewScore = ref(true)
+const handwritingRecognition = ref(false)
 const totalScore = ref(100)
 
 const selectedQuestionIds = ref(new Set())
@@ -313,7 +340,6 @@ const step = ref(1)
 
 const questionError = ref('')
 const submitError = ref('')
-const submitSuccess = ref('')
 const submitLoading = ref(false)
 
 const STORAGE_KEY = 'teacher.assignment.publish.filters'
@@ -378,6 +404,22 @@ const hydrateForm = async () => {
     deadline.value = payload?.deadline ?? deadline.value
     aiEnabled.value =
       typeof payload?.aiEnabled === 'boolean' ? payload.aiEnabled : aiEnabled.value
+    visibleAfterSubmit.value =
+      typeof payload?.visibleAfterSubmit === 'boolean'
+        ? payload.visibleAfterSubmit
+        : visibleAfterSubmit.value
+    allowViewAnswer.value =
+      typeof payload?.allowViewAnswer === 'boolean'
+        ? payload.allowViewAnswer
+        : allowViewAnswer.value
+    allowViewScore.value =
+      typeof payload?.allowViewScore === 'boolean'
+        ? payload.allowViewScore
+        : allowViewScore.value
+    handwritingRecognition.value =
+      typeof payload?.handwritingRecognition === 'boolean'
+        ? payload.handwritingRecognition
+        : handwritingRecognition.value
     totalScore.value =
       typeof payload?.totalScore === 'number' ? payload.totalScore : totalScore.value
     step.value = payload?.step ?? step.value
@@ -412,6 +454,10 @@ const persistForm = () => {
     description: description.value,
     deadline: deadline.value,
     aiEnabled: aiEnabled.value,
+    visibleAfterSubmit: visibleAfterSubmit.value,
+    allowViewAnswer: allowViewAnswer.value,
+    allowViewScore: allowViewScore.value,
+    handwritingRecognition: handwritingRecognition.value,
     totalScore: totalScore.value,
     step: step.value,
     selectedQuestionIds: Array.from(selectedQuestionIds.value),
@@ -450,6 +496,10 @@ watch(
     description,
     deadline,
     aiEnabled,
+    visibleAfterSubmit,
+    allowViewAnswer,
+    allowViewScore,
+    handwritingRecognition,
     totalScore,
     step,
     selectedQuestionIds,
@@ -889,7 +939,6 @@ const viewDetail = (questionId) => {
 
 const handlePublish = async () => {
   submitError.value = ''
-  submitSuccess.value = ''
 
   if (!selectedCourseId.value) {
     submitError.value = '请先选择课程'
@@ -907,6 +956,18 @@ const handlePublish = async () => {
   if (submitLoading.value) return
   submitLoading.value = true
   try {
+    const normalizedTitle = title.value.trim().toLowerCase()
+    const teacherAssignments = await listTeacherAssignments()
+    const duplicateExists = (teacherAssignments.items ?? []).some((item) => {
+      const itemCourseId = String(item.courseId ?? '')
+      const itemTitle = String(item.title ?? '').trim().toLowerCase()
+      return itemCourseId === selectedCourseId.value && itemTitle === normalizedTitle
+    })
+    if (duplicateExists) {
+      submitError.value = '同一课程下作业标题已存在，请更换后再发布'
+      return
+    }
+
     const created = await createAssignment({
       courseId: selectedCourseId.value,
       title: title.value.trim(),
@@ -914,6 +975,10 @@ const handlePublish = async () => {
       deadline: deadline.value || undefined,
       totalScore: Number(totalScore.value) || 100,
       aiEnabled: aiEnabled.value,
+      visibleAfterSubmit: visibleAfterSubmit.value,
+      allowViewAnswer: allowViewAnswer.value,
+      allowViewScore: allowViewScore.value,
+      handwritingRecognition: handwritingRecognition.value,
       selectedQuestionIds: Array.from(selectedQuestionIds.value),
     })
     const assignmentId = created.id
@@ -922,7 +987,7 @@ const handlePublish = async () => {
       weight: Number(questionWeights.value[id] ?? 0),
     }))
     await publishAssignment(assignmentId, { questionWeights: weightsPayload })
-    submitSuccess.value = '作业发布成功'
+    showAppToast('作业发布成功', 'success')
     sessionStorage.removeItem(FORM_KEY)
     selectedCourseId.value = ''
     selectedTextbookId.value = ''
@@ -931,6 +996,10 @@ const handlePublish = async () => {
     description.value = ''
     deadline.value = ''
     aiEnabled.value = true
+    visibleAfterSubmit.value = true
+    allowViewAnswer.value = false
+    allowViewScore.value = true
+    handwritingRecognition.value = false
     totalScore.value = 100
     selectedQuestionIds.value = new Set()
     selectedQuestionOrder.value = []
@@ -1120,5 +1189,17 @@ const handlePublish = async () => {
   background: rgba(255, 255, 255, 0.7);
   color: rgba(26, 29, 51, 0.8);
   box-shadow: none;
+}
+
+.checkbox-stack {
+  display: grid;
+  gap: 8px;
+}
+
+.checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(26, 29, 51, 0.88);
 }
 </style>

@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsBoolean,
   IsNumber,
   IsOptional,
   IsString,
@@ -30,5 +31,24 @@ export class UpdateAssignmentGradingConfigDto {
   @ValidateNested({ each: true })
   @Type(() => AssignmentWeightUpdateDto)
   questionWeights?: AssignmentWeightUpdateDto[];
-}
 
+  @IsOptional()
+  @IsBoolean()
+  visibleAfterSubmit?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  allowViewAnswer?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  allowViewScore?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  aiEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  handwritingRecognition?: boolean;
+}

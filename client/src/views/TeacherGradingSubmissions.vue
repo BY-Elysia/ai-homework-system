@@ -32,14 +32,14 @@
             :class="{ active: statusFilter === 'PENDING' }"
             @click="statusFilter = 'PENDING'"
           >
-            待批改
+            待确认
           </button>
           <button
             class="tab-btn"
             :class="{ active: statusFilter === 'GRADED' }"
             @click="statusFilter = 'GRADED'"
           >
-            已批改
+            已确认
           </button>
           <button
             class="tab-btn"
@@ -87,7 +87,7 @@
             class="submission-status"
             :class="item.isFinal ? 'graded' : item.hasObjection ? 'objection' : 'pending'"
           >
-            {{ item.isFinal ? '已批改' : item.hasObjection ? '有异议' : '待批改' }}
+            {{ item.isFinal ? '已确认' : item.hasObjection ? '有异议' : '待确认' }}
           </div>
           <button class="task-action ghost" @click="goGrading(item.submissionVersionId, item.studentId)">
             批改

@@ -25,6 +25,13 @@
           我的课程
         </RouterLink>
         <RouterLink
+          to="/teacher/assignments/publish"
+          class="nav-item"
+          :class="{ active: isActive('/teacher/assignments/publish') }"
+        >
+          作业发布
+        </RouterLink>
+        <RouterLink
           to="/teacher/grading"
           class="nav-item"
           :class="{ active: isActive('/teacher/grading') }"
@@ -32,18 +39,18 @@
           批改作业
         </RouterLink>
         <RouterLink
+          to="/teacher/class-import"
+          class="nav-item"
+          :class="{ active: isActive('/teacher/class-import') }"
+        >
+          班级导入
+        </RouterLink>
+        <RouterLink
           to="/teacher/question-bank"
           class="nav-item"
           :class="{ active: isActive('/teacher/question-bank') }"
         >
           题库
-        </RouterLink>
-        <RouterLink
-          to="/teacher/assignments/publish"
-          class="nav-item"
-          :class="{ active: isActive('/teacher/assignments/publish') }"
-        >
-          发布作业
         </RouterLink>
         <RouterLink
           to="/teacher/assistant"

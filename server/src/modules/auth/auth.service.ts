@@ -134,6 +134,9 @@ export class AuthService {
       semester: string;
       status?: CourseStatus;
     },
+    options?: {
+      expectedTeacherAccount?: string;
+    },
   ) {
     let rows: Array<Array<unknown>> = [];
 
@@ -196,6 +199,12 @@ export class AuthService {
     const teacherAccount = String(teacherRow.row?.[2] ?? '').trim();
     if (!teacherName || !teacherAccount) {
       throw new BadRequestException('教师姓名与工号不能为空');
+    }
+    if (
+      options?.expectedTeacherAccount &&
+      teacherAccount !== options.expectedTeacherAccount
+    ) {
+      throw new BadRequestException('教师导入仅允许使用本人教师账号');
     }
 
     const seenAccounts = new Set<string>();

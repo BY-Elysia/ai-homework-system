@@ -48,10 +48,12 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StudentLayout from '../components/StudentLayout.vue'
 import { listMyScores, type ScoreSummary } from '../api/score'
+import { listAllAssignments, type AssignmentSummary } from '../api/assignment'
 import { useStudentProfile } from '../composables/useStudentProfile'
 
 const { profileName, profileAccount, refreshProfile } = useStudentProfile()
 const scoreItems = ref<ScoreSummary[]>([])
+const assignmentItems = ref<AssignmentSummary[]>([])
 const scoreError = ref('')
 const router = useRouter()
 const route = useRoute()
@@ -66,26 +68,83 @@ const formatScoreDate = (value: string | null) => {
 }
 
 const scoreList = computed(() =>
-  scoreItems.value
-    .filter((item) => item.courseId === courseId.value)
-    .map((item) => ({
-      scoreId: item.scoreId,
-      assignmentId: item.assignmentId,
-      title: item.assignmentTitle,
-      totalScoreLabel:
-        item.status === 'UNSUBMITTED' || item.totalScore === null
-          ? '未提交'
-          : item.totalScore,
-      subLabel:
-        item.status === 'UNSUBMITTED'
-          ? '状态：未提交'
-          : `评分日期 ${formatScoreDate(item.updatedAt)}`,
-      canView: true,
-    })),
+  (() => {
+    const scoreMap = new Map(
+      scoreItems.value
+        .filter((item) => item.courseId === courseId.value)
+        .map((item) => [item.assignmentId, item]),
+    )
+    const items = assignmentItems.value
+      .filter((item) => item.courseId === courseId.value)
+      .map((assignment) => {
+        const score = scoreMap.get(assignment.id)
+        if (!assignment.allowViewScore) {
+          return {
+            scoreId: score?.scoreId ?? `hidden:${assignment.id}`,
+            assignmentId: assignment.id,
+            title: assignment.title,
+            totalScoreLabel: '不可见',
+            subLabel: '状态：教师已设置成绩不可见',
+            canView: false,
+          }
+        }
+        if (score?.status === 'GRADED' && score.totalScore !== null) {
+          return {
+            scoreId: score.scoreId,
+            assignmentId: assignment.id,
+            title: assignment.title,
+            totalScoreLabel: String(score.totalScore),
+            subLabel: `评分日期 ${formatScoreDate(score.updatedAt)}`,
+            canView: true,
+          }
+        }
+        if (assignment.submitted) {
+          return {
+            scoreId: score?.scoreId ?? `pending:${assignment.id}`,
+            assignmentId: assignment.id,
+            title: assignment.title,
+            totalScoreLabel: '待公布',
+            subLabel: '状态：已提交，待教师发布',
+            canView: false,
+          }
+        }
+        return {
+          scoreId: score?.scoreId ?? `unsubmitted:${assignment.id}`,
+          assignmentId: assignment.id,
+          title: assignment.title,
+          totalScoreLabel: '未提交',
+          subLabel: '状态：未提交',
+          canView: false,
+        }
+      })
+
+    const exists = new Set(items.map((item) => item.assignmentId))
+    scoreItems.value
+      .filter((item) => item.courseId === courseId.value && !exists.has(item.assignmentId))
+      .forEach((item) => {
+        items.push({
+          scoreId: item.scoreId,
+          assignmentId: item.assignmentId,
+          title: item.assignmentTitle,
+          totalScoreLabel:
+            item.status === 'UNSUBMITTED' || item.totalScore === null
+              ? '未提交'
+              : String(item.totalScore),
+          subLabel:
+            item.status === 'UNSUBMITTED'
+              ? '状态：未提交'
+              : `评分日期 ${formatScoreDate(item.updatedAt)}`,
+          canView: item.status === 'GRADED',
+        })
+      })
+    return items
+  })(),
 )
 
 const courseTitle = computed(() => {
-  const course = scoreItems.value.find((item) => item.courseId === courseId.value)
+  const course =
+    assignmentItems.value.find((item) => item.courseId === courseId.value) ||
+    scoreItems.value.find((item) => item.courseId === courseId.value)
   return course?.courseName ? `课程：${course.courseName}` : '课程成绩'
 })
 
@@ -103,6 +162,8 @@ onMounted(async () => {
   try {
     const response = await listMyScores()
     scoreItems.value = response?.items ?? []
+    const assignmentResponse = await listAllAssignments()
+    assignmentItems.value = assignmentResponse?.items ?? []
   } catch (err) {
     scoreError.value = err instanceof Error ? err.message : '加载成绩失败'
   }
@@ -125,5 +186,11 @@ onMounted(async () => {
   font-size: 12px;
   color: rgba(26, 29, 51, 0.7);
   cursor: pointer;
+}
+
+:deep(.grade-action:disabled) {
+  opacity: 0.52;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 </style>

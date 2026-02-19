@@ -7,8 +7,14 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
+import * as bcrypt from 'bcryptjs';
 import { CourseEntity, CourseStatus } from '../assignment/entities/course.entity';
-import { UserEntity, UserRole } from '../auth/entities/user.entity';
+import {
+  AccountType,
+  UserEntity,
+  UserRole,
+  UserStatus,
+} from '../auth/entities/user.entity';
 import { CreateCourseDto } from './dto/create-course.dto';
 import { UpdateCourseDto } from './dto/update-course.dto';
 import { CourseQueryDto } from './dto/course-query.dto';
@@ -547,8 +553,8 @@ export class CourseService {
     this.assertCourseAccess(course, requester);
 
     const isTeacher = requester.role === UserRole.TEACHER;
-    if (isTeacher && (dto.teacherId || dto.status)) {
-      throw new ForbiddenException('教师不可修改授课教师或课程状态');
+    if (isTeacher && dto.teacherId) {
+      throw new ForbiddenException('教师不可修改授课教师');
     }
 
     const newName = dto.name ?? course.name;
@@ -589,6 +595,117 @@ export class CourseService {
       where: { id: saved.teacherId },
     });
     return this.toCourseResponse(saved, teacher ?? null);
+  }
+
+  async deleteCourse(courseId: string, requester: RequestUser) {
+    const course = await this.courseRepo.findOne({
+      where: { id: courseId },
+    });
+    if (!course) {
+      throw new NotFoundException('课程不存在');
+    }
+    this.assertCourseAccess(course, requester);
+
+    await this.courseRepo.delete({ id: courseId });
+    return { success: true };
+  }
+
+  async addCourseStudent(
+    courseId: string,
+    accountRaw: string,
+    nameRaw: string,
+    requester: RequestUser,
+  ) {
+    const course = await this.courseRepo.findOne({
+      where: { id: courseId },
+    });
+    if (!course) {
+      throw new NotFoundException('课程不存在');
+    }
+    this.assertCourseAccess(course, requester);
+
+    const account = String(accountRaw ?? '').trim();
+    if (!account) {
+      throw new BadRequestException('学生学号不能为空');
+    }
+    const inputName = String(nameRaw ?? '').trim();
+    if (!inputName) {
+      throw new BadRequestException('学生姓名不能为空');
+    }
+
+    const student = await this.userRepo.findOne({
+      where: {
+        schoolId: course.schoolId,
+        account,
+      },
+    });
+    let targetStudent = student;
+    let created = false;
+    if (!targetStudent) {
+      const passwordHash = await bcrypt.hash('123456', 10);
+      targetStudent = await this.userRepo.save(
+        this.userRepo.create({
+          schoolId: course.schoolId,
+          accountType: AccountType.USERNAME,
+          account,
+          role: UserRole.STUDENT,
+          name: inputName,
+          status: UserStatus.ACTIVE,
+          passwordHash,
+        }),
+      );
+      created = true;
+    } else if (targetStudent.role !== UserRole.STUDENT) {
+      throw new BadRequestException('该账号不是学生身份，无法加入班级');
+    } else if (!this.normalizeDisplayName(targetStudent.name) && inputName) {
+      targetStudent.name = inputName;
+      targetStudent = await this.userRepo.save(targetStudent);
+    }
+
+    await this.dataSource.query(
+      `
+        INSERT INTO course_students (course_id, student_id, status)
+        VALUES ($1, $2, 'ENROLLED')
+        ON CONFLICT (course_id, student_id)
+        DO UPDATE SET status = 'ENROLLED', updated_at = now()
+      `,
+      [courseId, targetStudent.id],
+    );
+
+    return {
+      success: true,
+      created,
+      defaultPassword: created ? '123456' : null,
+      student: {
+        studentId: targetStudent.id,
+        name: this.normalizeDisplayName(targetStudent.name),
+        account: targetStudent.account ?? null,
+      },
+    };
+  }
+
+  async removeCourseStudent(
+    courseId: string,
+    studentId: string,
+    requester: RequestUser,
+  ) {
+    const course = await this.courseRepo.findOne({
+      where: { id: courseId },
+    });
+    if (!course) {
+      throw new NotFoundException('课程不存在');
+    }
+    this.assertCourseAccess(course, requester);
+
+    await this.dataSource.query(
+      `
+        UPDATE course_students
+        SET status = 'DROPPED', updated_at = now()
+        WHERE course_id = $1 AND student_id = $2
+      `,
+      [courseId, studentId],
+    );
+    return { success: true };
   }
 
   private assertCourseAccess(course: CourseEntity, requester: RequestUser) {

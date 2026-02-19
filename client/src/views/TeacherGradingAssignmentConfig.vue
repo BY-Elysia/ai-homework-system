@@ -1,7 +1,7 @@
 <template>
   <TeacherLayout
     title="作业详情 / 修改"
-    :subtitle="assignmentTitle || '调整截止时间、总分和题目权重'"
+    :subtitle="assignmentName || '按区块调整作业配置'"
     :profile-name="profileName"
     :profile-account="profileAccount"
     brand-sub="作业批改"
@@ -20,7 +20,7 @@
       <div class="panel-title panel-title-row">
         <div class="panel-title-with-sub">
           <div>作业配置</div>
-          <div class="panel-sub-title">调整截止时间、总分和各题权重</div>
+          <div class="panel-sub-title">调整截止时间、总分、发布设置与评分权重</div>
         </div>
         <button class="ghost-action" type="button" @click="goBack">返回作业列表</button>
       </div>
@@ -28,57 +28,110 @@
       <div v-if="loading" class="task-empty">加载中...</div>
       <div v-else-if="loadError" class="task-empty">{{ loadError }}</div>
       <div v-else class="config-form">
-        <div class="config-summary">
-          <span class="summary-item">题目数：{{ weights.length }}</span>
-          <span class="summary-item">作业标题：{{ assignmentTitle || '未命名作业' }}</span>
-        </div>
-
-        <div class="basic-grid">
-          <div class="form-row">
-            <label>截止时间</label>
-            <input v-model="deadlineInput" type="datetime-local" class="config-input" />
+        <section class="section-card">
+          <div class="section-title">基本信息</div>
+          <div class="section-sub">标题、截止时间、总分</div>
+          <div class="basic-grid">
+            <div class="form-row full-col">
+              <label>作业标题</label>
+              <input v-model.trim="assignmentName" type="text" class="config-input" />
+            </div>
+            <div class="form-row">
+              <label>截止时间</label>
+              <input v-model="deadlineInput" type="datetime-local" class="config-input" />
+            </div>
+            <div class="form-row">
+              <label>作业总分</label>
+              <input
+                v-model.number="totalScore"
+                type="number"
+                min="1"
+                step="1"
+                class="config-input"
+              />
+            </div>
           </div>
+        </section>
 
-          <div class="form-row">
-            <label>作业总分</label>
-            <input
-              v-model.number="totalScore"
-              type="number"
-              min="1"
-              step="1"
-              class="config-input"
-            />
+        <section class="section-card">
+          <div class="section-title">发布设置</div>
+          <div class="section-sub">学生是否可见、是否可看答案、是否可看分数</div>
+          <div class="option-grid">
+            <label class="option-item">
+              <input v-model="visibleAfterSubmit" type="checkbox" />
+              <span>学生提交后作业仍可见</span>
+            </label>
+            <label class="option-item">
+              <input v-model="allowViewAnswer" type="checkbox" />
+              <span>允许学生查看标准答案</span>
+            </label>
+            <label class="option-item">
+              <input v-model="allowViewScore" type="checkbox" />
+              <span>教师批改后允许学生查看分数</span>
+            </label>
           </div>
-        </div>
+        </section>
 
-        <div class="form-row weights-section">
-          <div class="weights-head">
-            <label>各题权重（总和需为 100）</label>
+        <section class="section-card">
+          <div class="section-title section-title-row">
+            <span>评分设置</span>
             <div class="weight-tools">
               <button class="ghost-action" type="button" @click="autoBalanceWeights">平均分配</button>
               <button class="ghost-action" type="button" @click="distributeByMaxScore">按满分占比</button>
               <button class="ghost-action" type="button" @click="resetWeights">重置</button>
             </div>
           </div>
-          <div class="weight-list">
-            <div v-for="item in weights" :key="item.questionId" class="weight-row">
-              <div class="weight-title">第{{ item.questionIndex }}题（满分{{ item.maxScore }}）</div>
-              <div class="weight-input-wrap">
-                <input
-                  v-model.number="item.weight"
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  class="config-input weight-input"
-                />
-                <span class="weight-suffix">%</span>
-              </div>
-            </div>
+          <div class="section-sub">题号 / 满分 / 权重（总和需为 100）</div>
+
+          <div class="weight-table-wrap">
+            <table class="weight-table">
+              <thead>
+                <tr>
+                  <th>题号</th>
+                  <th>满分</th>
+                  <th>权重</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in weights" :key="item.questionId">
+                  <td>第{{ item.questionIndex }}题</td>
+                  <td>{{ item.maxScore }}</td>
+                  <td>
+                    <div class="weight-input-wrap">
+                      <input
+                        v-model.number="item.weight"
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        class="config-input weight-input"
+                      />
+                      <span class="weight-suffix">%</span>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
+
           <div class="weight-total" :class="{ invalid: !isWeightValid }">
             当前总和：{{ weightSum.toFixed(2) }}
           </div>
-        </div>
+        </section>
+
+        <section class="section-card">
+          <div class="section-title">高级功能</div>
+          <div class="section-sub">AI批改与手写识别策略</div>
+          <div class="option-grid">
+            <label class="option-item">
+              <input v-model="aiEnabled" type="checkbox" />
+              <span>启用 AI 批改</span>
+            </label>
+            <label class="option-item">
+              <input v-model="handwritingRecognition" type="checkbox" />
+              <span>启用手写识别批改模式</span>
+            </label>
+          </div>
+        </section>
 
         <div class="actions">
           <button class="task-action" type="button" :disabled="saving || !canSave" @click="saveConfig">
@@ -86,7 +139,6 @@
           </button>
           <div v-if="!isWeightValid" class="task-empty">权重总和必须为 100</div>
           <div v-if="saveError" class="task-empty">{{ saveError }}</div>
-          <div v-if="saveSuccess" class="save-ok">{{ saveSuccess }}</div>
         </div>
       </div>
     </section>
@@ -101,8 +153,10 @@ import {
   getAssignment,
   getAssignmentSnapshot,
   updateAssignmentGradingConfig,
+  updateAssignmentMeta,
 } from '../api/assignment'
 import { useTeacherProfile } from '../composables/useTeacherProfile'
+import { showAppToast } from '../composables/useAppToast'
 
 type WeightRow = {
   questionId: string
@@ -118,9 +172,15 @@ const router = useRouter()
 const assignmentId = computed(() => String(route.params.assignmentId ?? ''))
 const courseId = computed(() => String(route.query.courseId ?? ''))
 
-const assignmentTitle = ref('')
+const assignmentName = ref('')
+const originalAssignmentName = ref('')
 const deadlineInput = ref('')
 const totalScore = ref(100)
+const visibleAfterSubmit = ref(true)
+const allowViewAnswer = ref(false)
+const allowViewScore = ref(true)
+const aiEnabled = ref(true)
+const handwritingRecognition = ref(false)
 const weights = ref<WeightRow[]>([])
 const initialWeights = ref<WeightRow[]>([])
 
@@ -128,14 +188,17 @@ const loading = ref(true)
 const loadError = ref('')
 const saving = ref(false)
 const saveError = ref('')
-const saveSuccess = ref('')
 
 const weightSum = computed(() =>
   weights.value.reduce((sum, item) => sum + (Number(item.weight) || 0), 0),
 )
 const isWeightValid = computed(() => Math.abs(weightSum.value - 100) <= 0.01)
 const canSave = computed(
-  () => isWeightValid.value && Number.isFinite(totalScore.value) && totalScore.value > 0,
+  () =>
+    isWeightValid.value &&
+    Number.isFinite(totalScore.value) &&
+    totalScore.value > 0 &&
+    assignmentName.value.trim().length > 0,
 )
 
 const toDatetimeLocal = (value?: string | null) => {
@@ -164,9 +227,15 @@ const fetchConfig = async () => {
     ])
     const questions = snapshot?.questions ?? []
     const defaultWeight = questions.length > 0 ? Number((100 / questions.length).toFixed(2)) : 0
-    assignmentTitle.value = assignment.title || ''
+    assignmentName.value = assignment.title || ''
+    originalAssignmentName.value = assignment.title || ''
     deadlineInput.value = toDatetimeLocal(assignment.deadline)
     totalScore.value = Number(assignment.totalScore ?? 100)
+    visibleAfterSubmit.value = assignment.visibleAfterSubmit !== false
+    allowViewAnswer.value = assignment.allowViewAnswer === true
+    allowViewScore.value = assignment.allowViewScore !== false
+    aiEnabled.value = assignment.aiEnabled !== false
+    handwritingRecognition.value = assignment.handwritingRecognition === true
     weights.value = questions.map((question, index) => {
       const explicit = Number(question.weight ?? 0)
       const weight =
@@ -219,7 +288,10 @@ const autoBalanceWeights = () => {
   const avg = roundWeight(100 / weights.value.length)
   weights.value = weights.value.map((item, index) => ({
     ...item,
-    weight: index === weights.value.length - 1 ? roundWeight(100 - avg * (weights.value.length - 1)) : avg,
+    weight:
+      index === weights.value.length - 1
+        ? roundWeight(100 - avg * (weights.value.length - 1))
+        : avg,
   }))
 }
 
@@ -247,7 +319,11 @@ const resetWeights = () => {
 
 const saveConfig = async () => {
   saveError.value = ''
-  saveSuccess.value = ''
+  const nextTitle = assignmentName.value.trim()
+  if (!nextTitle) {
+    saveError.value = '作业标题不能为空'
+    return
+  }
   if (!weights.value.length) {
     saveError.value = '作业题目为空'
     return
@@ -264,19 +340,27 @@ const saveConfig = async () => {
   normalizeWeightsTo100()
   saving.value = true
   try {
-    const result = await updateAssignmentGradingConfig(assignmentId.value, {
+    if (nextTitle !== originalAssignmentName.value) {
+      await updateAssignmentMeta(assignmentId.value, { title: nextTitle })
+      originalAssignmentName.value = nextTitle
+    }
+    await updateAssignmentGradingConfig(assignmentId.value, {
       deadline: fromDatetimeLocal(deadlineInput.value),
       totalScore: Number(totalScore.value),
+      visibleAfterSubmit: visibleAfterSubmit.value,
+      allowViewAnswer: allowViewAnswer.value,
+      allowViewScore: allowViewScore.value,
+      aiEnabled: aiEnabled.value,
+      handwritingRecognition: handwritingRecognition.value,
       questionWeights: weights.value.map((item) => ({
         questionId: item.questionId,
         weight: Number(item.weight),
       })),
     })
-    saveSuccess.value = result.needRepublish
-      ? '已保存，成绩发布状态已重置，请重新发布'
-      : '已保存'
+    showAppToast('已修改', 'success')
   } catch (err) {
     saveError.value = err instanceof Error ? err.message : '保存失败'
+    showAppToast(saveError.value || '保存失败', 'error')
   } finally {
     saving.value = false
   }
@@ -329,24 +413,42 @@ onMounted(async () => {
   gap: 14px;
 }
 
-.config-summary {
-  display: flex;
-  flex-wrap: wrap;
+.section-card {
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  padding: 14px;
+  display: grid;
   gap: 10px;
 }
 
-.summary-item {
+.section-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: rgba(26, 29, 51, 0.92);
+}
+
+.section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.section-sub {
   font-size: 12px;
-  color: rgba(26, 29, 51, 0.75);
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.68);
+  color: rgba(26, 29, 51, 0.6);
 }
 
 .basic-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.full-col {
+  grid-column: 1 / -1;
 }
 
 .form-row {
@@ -367,22 +469,20 @@ onMounted(async () => {
   background: #fff;
 }
 
-.weight-list {
+.option-grid {
   display: grid;
-  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
-.weights-section {
-  border-top: 1px solid rgba(180, 194, 220, 0.32);
-  padding-top: 10px;
-}
-
-.weights-head {
+.option-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.75);
+  color: rgba(26, 29, 51, 0.9);
 }
 
 .weight-tools {
@@ -392,26 +492,44 @@ onMounted(async () => {
   flex-wrap: wrap;
 }
 
-.weight-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+.weight-table-wrap {
+  overflow-x: auto;
 }
 
-.weight-title {
+.weight-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.weight-table th,
+.weight-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(180, 194, 220, 0.24);
+  text-align: left;
   font-size: 13px;
-  color: rgba(26, 29, 51, 0.85);
 }
 
-.weight-input {
-  max-width: 150px;
+.weight-table th {
+  font-size: 12px;
+  color: rgba(26, 29, 51, 0.6);
+  font-weight: 700;
+}
+
+.weight-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .weight-input-wrap {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+.weight-input {
+  width: 110px;
 }
 
 .weight-suffix {
@@ -437,36 +555,13 @@ onMounted(async () => {
 }
 
 @media (max-width: 900px) {
-  .basic-grid {
+  .basic-grid,
+  .option-grid {
     grid-template-columns: 1fr;
   }
 
-  .weight-row {
-    flex-direction: column;
+  .section-title-row {
     align-items: flex-start;
   }
-
-  .weight-input-wrap {
-    width: 100%;
-  }
-
-  .weight-input {
-    width: 100%;
-    max-width: none;
-  }
-
-  .actions {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
-
-.actions :deep(.task-empty) {
-  margin: 0;
-}
-
-.save-ok {
-  color: #1f7a4b;
-  font-size: 12px;
 }
 </style>

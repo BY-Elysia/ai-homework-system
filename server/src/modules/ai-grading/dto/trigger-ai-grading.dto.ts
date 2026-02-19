@@ -45,6 +45,11 @@ export class AiRunOptionsDto {
   @IsOptional()
   @IsNumber()
   temperature?: number;
+
+  /** 启用手写识别模式（提示词将切换为手写版） */
+  @IsOptional()
+  @IsBoolean()
+  handwritingRecognition?: boolean;
 }
 
 export class UncertaintyPolicyDto {

@@ -22,7 +22,10 @@
           学生成绩
           <span class="badge">{{ students.length }} 人</span>
         </div>
-        <button class="ghost-action" @click="goBack">返回课程</button>
+        <div class="title-actions">
+          <button class="ghost-action" @click="exportGradebook">导出成绩</button>
+          <button class="ghost-action" @click="goBack">返回课程</button>
+        </div>
       </div>
 
       <div v-if="!columns.length" class="empty-box">
@@ -157,6 +160,38 @@ const goBack = () => {
   router.push(`/teacher/courses/${courseId.value}`)
 }
 
+const exportGradebook = () => {
+  const headers = ['序号', '姓名', '学号', ...columns.value.map((col) => col.label)]
+  const lines = [headers.join(',')]
+
+  students.value.forEach((student, index) => {
+    const name = String(displayStudentName(student) ?? '').split(',').join(' ')
+    const account = String(student?.account ?? '').split(',').join(' ')
+    const scoreColumns = columns.value.map((col) => {
+      const cell = cellMap.value[student.studentId]?.[col.key]
+      if (!cell || cell.score === null || cell.score === undefined || Number.isNaN(cell.score)) {
+        return '-'
+      }
+      return Number(cell.score).toFixed(1)
+    })
+    lines.push([String(index + 1), name, account, ...scoreColumns].join(','))
+  })
+
+  if (students.value.length === 0) {
+    lines.push('1,暂无数据,暂无数据')
+  }
+
+  const blob = new Blob(['\uFEFF' + lines.join('\n')], {
+    type: 'text/csv;charset=utf-8;',
+  })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${courseTitle.value || '课程'}-成绩矩阵.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 const buildCellMap = (cells: any[]) => {
   type AggregateCell = {
     assignmentId: string
@@ -251,6 +286,12 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.title-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .ghost-action {

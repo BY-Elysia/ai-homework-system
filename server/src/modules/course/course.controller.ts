@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Param,
   Patch,
   Post,
@@ -79,5 +81,37 @@ export class CourseController {
     @Req() req: { user?: { sub?: string; role?: UserRole; schoolId?: string } },
   ) {
     return this.courseService.updateCourse(courseId, body, req.user ?? {});
+  }
+
+  @Delete(':courseId')
+  async deleteCourse(
+    @Param('courseId') courseId: string,
+    @Req() req: { user?: { sub?: string; role?: UserRole; schoolId?: string } },
+  ) {
+    return this.courseService.deleteCourse(courseId, req.user ?? {});
+  }
+
+  @Post(':courseId/students')
+  async addCourseStudent(
+    @Param('courseId') courseId: string,
+    @Body() body: { account?: string; name?: string },
+    @Req() req: { user?: { sub?: string; role?: UserRole; schoolId?: string } },
+  ) {
+    return this.courseService.addCourseStudent(
+      courseId,
+      body?.account ?? '',
+      body?.name ?? '',
+      req.user ?? {},
+    );
+  }
+
+  @Delete(':courseId/students/:studentId')
+  @HttpCode(200)
+  async removeCourseStudent(
+    @Param('courseId') courseId: string,
+    @Param('studentId') studentId: string,
+    @Req() req: { user?: { sub?: string; role?: UserRole; schoolId?: string } },
+  ) {
+    return this.courseService.removeCourseStudent(courseId, studentId, req.user ?? {});
   }
 }
