@@ -29,162 +29,166 @@
       </article>
     </section>
 
-    <section class="dashboard-grid">
-      <div class="panel glass">
-        <div class="panel-title panel-title-row">
-          <div>学习任务进度</div>
-          <div class="panel-mini">总体完成率：{{ completionRate }}%</div>
+    <div class="dashboard-stack">
+      <section class="dashboard-grid">
+        <div class="panel glass">
+          <div class="panel-title panel-title-row">
+            <div>学习任务进度</div>
+            <div class="panel-mini">总体完成率：{{ completionRate }}%</div>
+          </div>
+          <div class="class-list">
+            <div v-for="item in courseProgressTop" :key="item.courseKey" class="class-row">
+              <div class="class-main">
+                <div class="class-name">{{ item.courseName }}</div>
+                <div class="class-meta">
+                  <span>已提交 {{ item.submitted }} / {{ item.total }}</span>
+                  <span>待提交 {{ item.pending }}</span>
+                </div>
+              </div>
+              <div class="class-rate">{{ item.rate }}%</div>
+            </div>
+            <div v-if="!courseProgressTop.length" class="task-empty">
+              {{ assignmentError || '暂无课程数据' }}
+            </div>
+          </div>
         </div>
-        <div class="class-list">
-          <div v-for="item in courseProgressTop" :key="item.courseKey" class="class-row">
-            <div class="class-main">
-              <div class="class-name">{{ item.courseName }}</div>
-              <div class="class-meta">
-                <span>已提交 {{ item.submitted }} / {{ item.total }}</span>
-                <span>待提交 {{ item.pending }}</span>
+
+        <div class="panel glass">
+          <div class="panel-title">作业状态分布</div>
+          <div class="status-wrap">
+            <div class="status-donut" :style="donutStyle">
+              <div class="status-center">{{ openAssignmentCount }}</div>
+            </div>
+            <div class="status-legend">
+              <div class="legend-item">
+                <span class="dot dot-pending" /> 待提交 {{ statusRates.pending }}%
+              </div>
+              <div class="legend-item">
+                <span class="dot dot-submitted" /> 已提交 {{ statusRates.submitted }}%
+              </div>
+              <div class="legend-item">
+                <span class="dot dot-graded" /> 已出分 {{ statusRates.graded }}%
               </div>
             </div>
-            <div class="class-rate">{{ item.rate }}%</div>
-          </div>
-          <div v-if="!courseProgressTop.length" class="task-empty">{{ assignmentError || '暂无课程数据' }}</div>
-        </div>
-      </div>
-
-      <div class="panel glass">
-        <div class="panel-title">作业状态分布</div>
-        <div class="status-wrap">
-          <div class="status-donut" :style="donutStyle">
-            <div class="status-center">{{ openAssignmentCount }}</div>
-          </div>
-          <div class="status-legend">
-            <div class="legend-item">
-              <span class="dot dot-pending" /> 待提交 {{ statusRates.pending }}%
-            </div>
-            <div class="legend-item">
-              <span class="dot dot-submitted" /> 已提交 {{ statusRates.submitted }}%
-            </div>
-            <div class="legend-item">
-              <span class="dot dot-graded" /> 已出分 {{ statusRates.graded }}%
-            </div>
           </div>
         </div>
-      </div>
 
-      <div class="panel glass">
-        <div class="panel-title">最近截止</div>
-        <div class="task-list compact">
-          <div v-for="task in urgentPendingTasks" :key="task.id" class="task-card compact">
-            <div class="task-head compact">
-              <div class="task-main">
-                <div class="task-title" v-mathjax v-html="renderTextHtml(task.title)" />
-                <div class="task-sub">{{ task.course }}</div>
+        <div class="panel glass">
+          <div class="panel-title">最近截止</div>
+          <div class="task-list compact">
+            <div v-for="task in urgentPendingTasks" :key="task.id" class="task-card compact">
+              <div class="task-head compact">
+                <div class="task-main">
+                  <div class="task-title" v-mathjax v-html="renderTextHtml(task.title)" />
+                  <div class="task-sub">{{ task.course }}</div>
+                </div>
+                <div class="task-deadline">{{ task.deadline }}</div>
               </div>
-              <div class="task-deadline">{{ task.deadline }}</div>
+              <button class="task-action small" @click="goSubmit(task.id)">去提交</button>
             </div>
-            <button class="task-action small" @click="goSubmit(task.id)">去提交</button>
+            <div v-if="!urgentPendingTasks.length" class="task-empty">当前没有紧急截止作业</div>
           </div>
-          <div v-if="!urgentPendingTasks.length" class="task-empty">当前没有紧急截止作业</div>
         </div>
-      </div>
 
-      <div class="panel glass">
-        <div class="panel-title">成绩概览</div>
-        <div class="mini-kpi-grid">
-          <div class="mini-kpi">
-            <div class="mini-label">已出分作业</div>
-            <div class="mini-value">{{ gradedTasks.length }}</div>
-          </div>
-          <div class="mini-kpi">
-            <div class="mini-label">平均分</div>
-            <div class="mini-value good">{{ averageScore }}</div>
-          </div>
-          <div class="mini-kpi">
-            <div class="mini-label">最高分</div>
-            <div class="mini-value">{{ bestScore }}</div>
-          </div>
-          <div class="mini-kpi">
-            <div class="mini-label">最近一次得分</div>
-            <div class="mini-value warn">{{ latestScore }}</div>
+        <div class="panel glass">
+          <div class="panel-title">成绩概览</div>
+          <div class="mini-kpi-grid">
+            <div class="mini-kpi">
+              <div class="mini-label">已出分作业</div>
+              <div class="mini-value">{{ gradedTasks.length }}</div>
+            </div>
+            <div class="mini-kpi">
+              <div class="mini-label">平均分</div>
+              <div class="mini-value good">{{ averageScore }}</div>
+            </div>
+            <div class="mini-kpi">
+              <div class="mini-label">最高分</div>
+              <div class="mini-value">{{ bestScore }}</div>
+            </div>
+            <div class="mini-kpi">
+              <div class="mini-label">最近一次得分</div>
+              <div class="mini-value warn">{{ latestScore }}</div>
+            </div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section class="dashboard-grid">
-      <article class="panel glass">
-        <div class="panel-title panel-title-row">
-          <div>待提交作业</div>
-          <button class="ghost-action" type="button" @click="goAssignments">
-            查看全部
-          </button>
-        </div>
-        <div class="table-wrap">
-          <table class="overview-table">
-            <thead>
-              <tr>
-                <th>作业</th>
-                <th>课程</th>
-                <th>截止时间</th>
-                <th>状态</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="task in pendingTasksTop" :key="task.id">
-                <td v-mathjax v-html="renderTextHtml(task.title)" />
-                <td>{{ task.course }}</td>
-                <td>{{ task.deadline }}</td>
-                <td><span class="status-pill warn">未提交</span></td>
-                <td>
-                  <button class="table-action" type="button" @click="goSubmit(task.id)">继续作业</button>
-                </td>
-              </tr>
-              <tr v-if="!pendingTasksTop.length">
-                <td colspan="5" class="empty-cell">{{ assignmentError || '暂无待提交作业' }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </article>
+      <section class="dashboard-grid">
+        <article class="panel glass">
+          <div class="panel-title panel-title-row">
+            <div>待提交作业</div>
+            <button class="ghost-action" type="button" @click="goAssignments">
+              查看全部
+            </button>
+          </div>
+          <div class="table-wrap">
+            <table class="overview-table">
+              <thead>
+                <tr>
+                  <th>作业</th>
+                  <th>课程</th>
+                  <th>截止时间</th>
+                  <th>状态</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="task in pendingTasksTop" :key="task.id">
+                  <td v-mathjax v-html="renderTextHtml(task.title)" />
+                  <td>{{ task.course }}</td>
+                  <td>{{ task.deadline }}</td>
+                  <td><span class="status-pill warn">未提交</span></td>
+                  <td>
+                    <button class="table-action" type="button" @click="goSubmit(task.id)">继续作业</button>
+                  </td>
+                </tr>
+                <tr v-if="!pendingTasksTop.length">
+                  <td colspan="5" class="empty-cell">{{ assignmentError || '暂无待提交作业' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
 
-      <article class="panel glass">
-        <div class="panel-title panel-title-row">
-          <div>已提交与已出分</div>
-          <button class="ghost-action" type="button" @click="goScores">
-            查看成绩
-          </button>
-        </div>
-        <div class="table-wrap">
-          <table class="overview-table">
-            <thead>
-              <tr>
-                <th>作业</th>
-                <th>课程</th>
-                <th>截止时间</th>
-                <th>状态</th>
-                <th>得分</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="task in submittedTasksTop" :key="task.id">
-                <td v-mathjax v-html="renderTextHtml(task.title)" />
-                <td>{{ task.course }}</td>
-                <td>{{ task.deadline }}</td>
-                <td>
-                  <span class="status-pill" :class="task.isFinal ? 'good' : 'info'">
-                    {{ task.isFinal ? '已出分' : '已提交' }}
-                  </span>
-                </td>
-                <td>{{ scoreByAssignment[task.id] ?? '-' }}</td>
-              </tr>
-              <tr v-if="!submittedTasksTop.length">
-                <td colspan="5" class="empty-cell">{{ assignmentError || '暂无已提交作业' }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </article>
-    </section>
+        <article class="panel glass">
+          <div class="panel-title panel-title-row">
+            <div>已提交与已出分</div>
+            <button class="ghost-action" type="button" @click="goScores">
+              查看成绩
+            </button>
+          </div>
+          <div class="table-wrap">
+            <table class="overview-table">
+              <thead>
+                <tr>
+                  <th>作业</th>
+                  <th>课程</th>
+                  <th>截止时间</th>
+                  <th>状态</th>
+                  <th>得分</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="task in submittedTasksTop" :key="task.id">
+                  <td v-mathjax v-html="renderTextHtml(task.title)" />
+                  <td>{{ task.course }}</td>
+                  <td>{{ task.deadline }}</td>
+                  <td>
+                    <span class="status-pill" :class="task.isFinal ? 'good' : 'info'">
+                      {{ task.isFinal ? '已出分' : '已提交' }}
+                    </span>
+                  </td>
+                  <td>{{ scoreByAssignment[task.id] ?? '-' }}</td>
+                </tr>
+                <tr v-if="!submittedTasksTop.length">
+                  <td colspan="5" class="empty-cell">{{ assignmentError || '暂无已提交作业' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+    </div>
 
     <RouterLink to="/student/assistant" class="floating-ai" aria-label="AI assistant">
       <span>AI</span>
@@ -305,7 +309,12 @@ const formatDeadline = (deadline) => {
   if (!deadline) return '未设置截止时间'
   const date = new Date(deadline)
   if (Number.isNaN(date.getTime())) return '未设置截止时间'
-  return `截止 ${date.toLocaleDateString('zh-CN')}`
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hour = String(date.getHours()).padStart(2, '0')
+  const minute = String(date.getMinutes()).padStart(2, '0')
+  return `截止 ${year}/${month}/${day} ${hour}:${minute}`
 }
 
 const renderTextHtml = (text) => {
@@ -404,7 +413,23 @@ const donutStyle = computed(() => {
 const parseDeadlineTime = (deadlineLabel) => {
   if (!deadlineLabel || deadlineLabel.startsWith('未设置')) return Number.POSITIVE_INFINITY
   const raw = String(deadlineLabel).replace('截止 ', '')
-  const value = new Date(raw).getTime()
+  const match = raw.match(
+    /^(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})$/,
+  )
+  if (!match) {
+    const fallback = new Date(raw).getTime()
+    return Number.isNaN(fallback) ? Number.POSITIVE_INFINITY : fallback
+  }
+  const [, y, m, d, h, min] = match
+  const value = new Date(
+    Number(y),
+    Number(m) - 1,
+    Number(d),
+    Number(h),
+    Number(min),
+    0,
+    0,
+  ).getTime()
   return Number.isNaN(value) ? Number.POSITIVE_INFINITY : value
 }
 
@@ -514,6 +539,11 @@ onMounted(async () => {
   margin-bottom: 14px;
 }
 
+.dashboard-stack {
+  display: grid;
+  gap: 14px;
+}
+
 .kpi-card {
   padding: 18px;
   border-radius: 16px;
@@ -548,19 +578,22 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
-  margin-bottom: 14px;
+  align-items: stretch;
 }
 
 .panel {
   padding: 16px;
   border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .panel-title {
   font-size: 24px;
   font-weight: 800;
   color: #222a3f;
-  margin-bottom: 12px;
+  margin-bottom: 0;
 }
 
 .panel-title-row {

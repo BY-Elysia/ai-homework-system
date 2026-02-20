@@ -26,36 +26,6 @@
       </div>
 
       <div class="grading-toolbar">
-        <div class="grading-tabs">
-          <button
-            class="tab-btn"
-            :class="{ active: statusFilter === 'PENDING' }"
-            @click="statusFilter = 'PENDING'"
-          >
-            待确认
-          </button>
-          <button
-            class="tab-btn"
-            :class="{ active: statusFilter === 'GRADED' }"
-            @click="statusFilter = 'GRADED'"
-          >
-            已确认
-          </button>
-          <button
-            class="tab-btn"
-            :class="{ active: statusFilter === 'ALL' }"
-            @click="statusFilter = 'ALL'"
-          >
-            全部
-          </button>
-          <button
-            class="tab-btn"
-            :class="{ active: statusFilter === 'MISSING' }"
-            @click="statusFilter = 'MISSING'"
-          >
-            未提交
-          </button>
-        </div>
         <div class="grading-search">
           <input
             v-model="searchText"
@@ -63,6 +33,36 @@
             type="text"
             placeholder="搜索学生姓名/学号"
           />
+        </div>
+        <div class="grading-tabs">
+          <button
+            class="tab-btn"
+            :class="{ active: statusFilter === 'PENDING' }"
+            @click="statusFilter = 'PENDING'"
+          >
+            待确认（{{ pendingCount }}）
+          </button>
+          <button
+            class="tab-btn"
+            :class="{ active: statusFilter === 'GRADED' }"
+            @click="statusFilter = 'GRADED'"
+          >
+            已确认（{{ gradedCount }}）
+          </button>
+          <button
+            class="tab-btn"
+            :class="{ active: statusFilter === 'MISSING' }"
+            @click="statusFilter = 'MISSING'"
+          >
+            未提交（{{ missingCount }}）
+          </button>
+          <button
+            class="tab-btn"
+            :class="{ active: statusFilter === 'ALL' }"
+            @click="statusFilter = 'ALL'"
+          >
+            全部（{{ allCount }}）
+          </button>
         </div>
       </div>
 
@@ -237,6 +237,18 @@ const displayCount = computed(() =>
     : filteredSubmissions.value.length,
 )
 
+const pendingCount = computed(() =>
+  mergedSubmissions.value.filter((item) => !item.isFinal).length,
+)
+
+const gradedCount = computed(() =>
+  mergedSubmissions.value.filter((item) => item.isFinal).length,
+)
+
+const allCount = computed(() => mergedSubmissions.value.length)
+
+const missingCount = computed(() => missingStudents.value.length)
+
 const totalPages = computed(() =>
   Math.max(1, Math.ceil(filteredSubmissions.value.length / pageSize.value)),
 )
@@ -323,16 +335,19 @@ onMounted(async () => {
 }
 
 .grading-toolbar {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  align-items: center;
   gap: 12px;
   margin: 12px 0;
-  flex-wrap: wrap;
 }
 
 .grading-tabs {
   display: flex;
   gap: 8px;
+  justify-self: end;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .tab-btn {
@@ -352,8 +367,7 @@ onMounted(async () => {
 }
 
 .grading-search {
-  flex: 1;
-  min-width: 220px;
+  min-width: 0;
 }
 
 .search-input {
@@ -443,6 +457,17 @@ onMounted(async () => {
 }
 
 @media (max-width: 900px) {
+  .grading-toolbar {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .grading-tabs {
+    margin-left: 0;
+    justify-content: flex-start;
+  }
+
   .submission-row {
     grid-template-columns: 1fr;
     align-items: flex-start;

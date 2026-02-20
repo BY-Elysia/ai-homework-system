@@ -4,6 +4,7 @@ import {
   Min,
   IsBoolean,
   IsEnum,
+  MaxLength,
   IsNumber,
   IsOptional,
   IsString,
@@ -11,6 +12,7 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
+import { AssignmentAiGradingStrictness } from '../../assignment/entities/assignment.entity';
 
 export enum SnapshotPolicy {
   LATEST_PUBLISHED = 'LATEST_PUBLISHED',
@@ -52,6 +54,17 @@ export class AiRunOptionsDto {
   @IsOptional()
   @IsBoolean()
   handwritingRecognition?: boolean;
+
+  /** 批改严厉程度：宽松 / 均衡 / 严格 */
+  @IsOptional()
+  @IsEnum(AssignmentAiGradingStrictness)
+  gradingStrictness?: AssignmentAiGradingStrictness;
+
+  /** 教师附加的批改方向提示词 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  customGuidance?: string;
 }
 
 export class UncertaintyPolicyDto {

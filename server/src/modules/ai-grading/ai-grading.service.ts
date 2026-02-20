@@ -12,7 +12,10 @@ import { AiGradingQueueService } from './ai-grading.queue';
 import { AiGradingEntity } from './entities/ai-grading.entity';
 import { AiJobEntity, AiJobStage, AiJobStatus } from './entities/ai-job.entity';
 import { AiStatus, SubmissionVersionEntity } from '../submission/entities/submission-version.entity';
-import { AssignmentEntity } from '../assignment/entities/assignment.entity';
+import {
+  AssignmentAiGradingStrictness,
+  AssignmentEntity,
+} from '../assignment/entities/assignment.entity';
 import { AssignmentSnapshotEntity } from '../assignment/entities/assignment-snapshot.entity';
 
 @Injectable()
@@ -78,6 +81,13 @@ export class AiGradingService {
           dto.options?.handwritingRecognition ??
           assignment.handwritingRecognition ??
           false,
+        gradingStrictness:
+          dto.options?.gradingStrictness ??
+          assignment.aiGradingStrictness ??
+          AssignmentAiGradingStrictness.BALANCED,
+        customGuidance: this.normalizeCustomGuidance(
+          dto.options?.customGuidance ?? assignment.aiPromptGuidance ?? null,
+        ),
       },
       uncertaintyPolicy: {
         ...(dto.uncertaintyPolicy ?? {}),
@@ -299,5 +309,11 @@ export class AiGradingService {
     if (value < 0) return 0;
     if (value > 1) return 1;
     return Number(value.toFixed(3));
+  }
+
+  private normalizeCustomGuidance(value?: string | null) {
+    if (typeof value !== 'string') return undefined;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
   }
 }

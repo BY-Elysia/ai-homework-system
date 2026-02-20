@@ -85,7 +85,15 @@
           <div v-if="subtitle" class="subtitle">{{ subtitle }}</div>
         </div>
         <div class="top-actions">
-          <slot name="actions" />
+          <slot name="actions">
+            <div class="topbar-profile">
+              <div class="topbar-avatar">{{ (profileName || 'T')[0] }}</div>
+              <div>
+                <div class="topbar-name">{{ profileName }}</div>
+                <div class="topbar-id">工号 {{ profileAccount }}</div>
+              </div>
+            </div>
+          </slot>
         </div>
       </header>
 

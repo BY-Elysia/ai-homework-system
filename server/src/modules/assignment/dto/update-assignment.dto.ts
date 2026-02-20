@@ -1,5 +1,16 @@
-import { IsBoolean, IsEnum, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
-import { AssignmentStatus } from '../entities/assignment.entity';
+import {
+  IsBoolean,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
+import {
+  AssignmentAiGradingStrictness,
+  AssignmentStatus,
+} from '../entities/assignment.entity';
 
 export class UpdateAssignmentDto {
   @IsOptional()
@@ -38,6 +49,15 @@ export class UpdateAssignmentDto {
   @IsOptional()
   @IsBoolean()
   handwritingRecognition?: boolean;
+
+  @IsOptional()
+  @IsEnum(AssignmentAiGradingStrictness)
+  aiGradingStrictness?: AssignmentAiGradingStrictness;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  aiPromptGuidance?: string;
 
   @IsOptional()
   @IsNumber()

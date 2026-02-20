@@ -4,6 +4,7 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  MaxLength,
   IsNumber,
   IsOptional,
   IsString,
@@ -12,7 +13,10 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { AssignmentStatus } from '../entities/assignment.entity';
+import {
+  AssignmentAiGradingStrictness,
+  AssignmentStatus,
+} from '../entities/assignment.entity';
 import { QuestionType } from '../entities/assignment-question.entity';
 
 export class CreateAssignmentQuestionDto {
@@ -91,6 +95,15 @@ export class CreateAssignmentDto {
   @IsOptional()
   @IsBoolean()
   handwritingRecognition?: boolean;
+
+  @IsOptional()
+  @IsEnum(AssignmentAiGradingStrictness)
+  aiGradingStrictness?: AssignmentAiGradingStrictness;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  aiPromptGuidance?: string;
 
   @IsOptional()
   @IsNumber()

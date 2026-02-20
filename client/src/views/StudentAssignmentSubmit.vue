@@ -7,7 +7,10 @@
     brand-sub="作业提交"
   >
     <section class="panel glass">
-      <div class="panel-title">作业提交</div>
+      <div class="panel-title panel-title-row">
+        <div>作业提交</div>
+        <button class="ghost-action" type="button" @click="goBack">返回作业库</button>
+      </div>
       <div v-if="loading" class="task-empty">加载题目中...</div>
       <div v-else class="submit-layout">
         <aside class="question-sidebar">
@@ -290,11 +293,15 @@
             </button>
           </div>
           <div class="submit-actions">
-            <button class="task-action" :disabled="submitting || isFinalized" @click="submit">
+            <button
+              class="task-action"
+              :class="{ 'is-locked': isFinalized }"
+              :disabled="submitting || isFinalized"
+              @click="submit"
+            >
               {{ isFinalized ? '已评分不可再提交' : submitting ? '提交中...' : '提交作业' }}
             </button>
             <div v-if="error" class="submit-error">{{ error }}</div>
-            <div v-if="success" class="submit-success">提交成功</div>
             <div v-if="isFinalized" class="submit-lock">老师已确认最终成绩，无法再次提交。</div>
           </div>
         </div>
@@ -305,7 +312,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { EditorContent, useEditor } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import UnderlineExtension from '@tiptap/extension-underline'
@@ -341,11 +348,11 @@ import { useStudentProfile } from '../composables/useStudentProfile'
 
 const { profileName, profileAccount, refreshProfile } = useStudentProfile()
 const route = useRoute()
+const router = useRouter()
 
 const loading = ref(true)
 const submitting = ref(false)
 const error = ref('')
-const success = ref(false)
 const syncingFromQuestion = ref(false)
 const toolbarFileInputRef = ref<HTMLInputElement | null>(null)
 const dragDepth = ref(0)
@@ -376,6 +383,10 @@ const isFinalized = ref(false)
 const assignmentId = computed(() => String(route.params.assignmentId ?? ''))
 const apiBaseOrigin = API_BASE_URL.replace(/\/api\/v1\/?$/, '')
 const currentQuestion = computed(() => questions.value[currentIndex.value] ?? null)
+
+const goBack = () => {
+  router.push('/student/assignments')
+}
 
 const editor = useEditor({
   extensions: [
@@ -779,7 +790,6 @@ const validate = () => {
 const submit = async () => {
   if (submitting.value) return
   error.value = ''
-  success.value = false
   const validationMessage = validate()
   if (validationMessage) {
     error.value = validationMessage
@@ -807,7 +817,7 @@ const submit = async () => {
     })
     previewUrls.value = {}
     filesByQuestion.value = {}
-    success.value = true
+    showAppToast('已提交', 'success')
   } catch (err) {
     error.value = err instanceof Error ? err.message : '提交失败'
   } finally {
@@ -832,6 +842,23 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.panel-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ghost-action {
+  border: none;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: rgba(26, 29, 51, 0.7);
+  cursor: pointer;
+}
+
 .submit-layout {
   display: grid;
   grid-template-columns: 90px 1fr;
@@ -1164,14 +1191,18 @@ onBeforeUnmount(() => {
   gap: 12px;
 }
 
+.submit-actions .task-action.is-locked,
+.submit-actions .task-action.is-locked:disabled {
+  background: linear-gradient(135deg, rgba(88, 174, 255, 0.45), rgba(108, 229, 215, 0.45));
+  color: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
 .submit-error {
   font-size: 12px;
   color: #e76464;
-}
-
-.submit-success {
-  font-size: 12px;
-  color: #2e9d70;
 }
 
 .submit-lock {

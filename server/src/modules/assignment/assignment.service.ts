@@ -10,7 +10,11 @@ import { PublishAssignmentDto } from './dto/publish-assignment.dto';
 import { UpdateAssignmentGradingConfigDto } from './dto/update-assignment-grading-config.dto';
 import { UpdateAssignmentDto } from './dto/update-assignment.dto';
 import { UpdateAssignmentQuestionsDto } from './dto/update-assignment-questions.dto';
-import { AssignmentEntity, AssignmentStatus } from './entities/assignment.entity';
+import {
+  AssignmentAiGradingStrictness,
+  AssignmentEntity,
+  AssignmentStatus,
+} from './entities/assignment.entity';
 import { AssignmentSnapshotEntity } from './entities/assignment-snapshot.entity';
 import {
   AssignmentQuestionEntity,
@@ -109,6 +113,9 @@ export class AssignmentService {
         allowViewAnswer: dto.allowViewAnswer ?? false,
         allowViewScore: dto.allowViewScore ?? true,
         handwritingRecognition: dto.handwritingRecognition ?? false,
+        aiPromptGuidance: dto.aiPromptGuidance?.trim() || null,
+        aiGradingStrictness:
+          dto.aiGradingStrictness ?? AssignmentAiGradingStrictness.BALANCED,
         aiConfidenceThreshold: (dto.aiConfidenceThreshold ?? 0.75).toFixed(3),
         status: AssignmentStatus.DRAFT,
         selectedQuestionIds: [...createdQuestionIds, ...existingIds],
@@ -159,6 +166,11 @@ export class AssignmentService {
     assignment.allowViewScore = dto.allowViewScore ?? assignment.allowViewScore;
     assignment.handwritingRecognition =
       dto.handwritingRecognition ?? assignment.handwritingRecognition;
+    assignment.aiGradingStrictness =
+      dto.aiGradingStrictness ?? assignment.aiGradingStrictness;
+    if (dto.aiPromptGuidance !== undefined) {
+      assignment.aiPromptGuidance = dto.aiPromptGuidance.trim() || null;
+    }
     assignment.totalScore =
       typeof dto.totalScore === 'number'
         ? dto.totalScore.toFixed(2)
@@ -207,6 +219,12 @@ export class AssignmentService {
     const nextAiEnabled = dto.aiEnabled ?? assignment.aiEnabled;
     const nextHandwritingRecognition =
       dto.handwritingRecognition ?? assignment.handwritingRecognition;
+    const nextAiGradingStrictness =
+      dto.aiGradingStrictness ?? assignment.aiGradingStrictness;
+    const nextAiPromptGuidance =
+      dto.aiPromptGuidance !== undefined
+        ? dto.aiPromptGuidance.trim() || null
+        : assignment.aiPromptGuidance;
     const nextAiConfidenceThreshold =
       typeof dto.aiConfidenceThreshold === 'number'
         ? Number(dto.aiConfidenceThreshold.toFixed(3))
@@ -225,6 +243,8 @@ export class AssignmentService {
       assignment.allowViewScore = nextAllowViewScore;
       assignment.aiEnabled = nextAiEnabled;
       assignment.handwritingRecognition = nextHandwritingRecognition;
+      assignment.aiGradingStrictness = nextAiGradingStrictness;
+      assignment.aiPromptGuidance = nextAiPromptGuidance;
       assignment.aiConfidenceThreshold = nextAiConfidenceThreshold.toFixed(3);
       assignment.updatedAt = new Date();
 
@@ -491,7 +511,9 @@ export class AssignmentService {
           a.visible_after_submit AS "visibleAfterSubmit",
           a.allow_view_answer AS "allowViewAnswer",
           a.allow_view_score AS "allowViewScore",
-          a.handwriting_recognition AS "handwritingRecognition"
+          a.handwriting_recognition AS "handwritingRecognition",
+          a.ai_grading_strictness AS "aiGradingStrictness",
+          a.ai_prompt_guidance AS "aiPromptGuidance"
         FROM assignments a
         INNER JOIN courses c ON c.id = a.course_id
         INNER JOIN course_students cs ON cs.course_id = a.course_id
@@ -519,6 +541,8 @@ export class AssignmentService {
         allowViewAnswer: row.allowViewAnswer === true,
         allowViewScore: row.allowViewScore === true,
         handwritingRecognition: row.handwritingRecognition === true,
+        aiGradingStrictness: row.aiGradingStrictness ?? AssignmentAiGradingStrictness.BALANCED,
+        aiPromptGuidance: row.aiPromptGuidance ?? null,
       })),
     };
   }
@@ -548,7 +572,9 @@ export class AssignmentService {
           a.visible_after_submit AS "visibleAfterSubmit",
           a.allow_view_answer AS "allowViewAnswer",
           a.allow_view_score AS "allowViewScore",
-          a.handwriting_recognition AS "handwritingRecognition"
+          a.handwriting_recognition AS "handwritingRecognition",
+          a.ai_grading_strictness AS "aiGradingStrictness",
+          a.ai_prompt_guidance AS "aiPromptGuidance"
         FROM assignments a
         INNER JOIN courses c ON c.id = a.course_id
         INNER JOIN course_students cs ON cs.course_id = a.course_id
@@ -574,6 +600,8 @@ export class AssignmentService {
         allowViewAnswer: row.allowViewAnswer === true,
         allowViewScore: row.allowViewScore === true,
         handwritingRecognition: row.handwritingRecognition === true,
+        aiGradingStrictness: row.aiGradingStrictness ?? AssignmentAiGradingStrictness.BALANCED,
+        aiPromptGuidance: row.aiPromptGuidance ?? null,
       })),
     };
   }
@@ -897,6 +925,9 @@ export class AssignmentService {
       allowViewAnswer: assignment.allowViewAnswer,
       allowViewScore: assignment.allowViewScore,
       handwritingRecognition: assignment.handwritingRecognition,
+      aiPromptGuidance: assignment.aiPromptGuidance ?? null,
+      aiGradingStrictness:
+        assignment.aiGradingStrictness ?? AssignmentAiGradingStrictness.BALANCED,
       aiConfidenceThreshold: Number(assignment.aiConfidenceThreshold ?? 0.75),
       totalScore: Number(assignment.totalScore ?? 0),
       questionNo: assignment.questionNo ?? null,

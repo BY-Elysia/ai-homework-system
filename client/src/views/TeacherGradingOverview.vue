@@ -21,12 +21,21 @@
         选择课程
         <span class="badge">{{ courseList.length }} 门</span>
       </div>
-      <div class="course-list">
-        <div v-for="course in courseList" :key="course.courseId" class="course-card">
-          <div class="course-main">
-            <div class="course-title">{{ course.name }}</div>
+      <div class="course-grid">
+        <div
+          v-for="course in courseList"
+          :key="course.courseId"
+          class="course-card"
+          @click="goCourse(course.courseId)"
+        >
+          <div class="course-title">{{ course.name }}</div>
+          <div class="course-sub">
+            <span>作业 {{ course.total }} 份</span>
+            <span class="sub-split">·</span>
+            <span class="status-inline pending">待确认 {{ course.pending }} 份</span>
+            <span class="sub-split">·</span>
+            <span class="status-inline active">已确认 {{ course.graded }} 份</span>
           </div>
-          <button class="task-action" @click="goCourse(course.courseId)">进入课程</button>
         </div>
         <div v-if="!courseList.length" class="task-empty">
           {{ gradingError || '暂无课程' }}
@@ -97,22 +106,57 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.course-list {
+.course-grid {
   display: grid;
   gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
 .course-card {
-  background: rgba(255, 255, 255, 0.6);
-  border-radius: 18px;
-  padding: 16px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
   display: grid;
-  gap: 10px;
+  gap: 6px;
+}
+
+.course-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(24, 34, 64, 0.12);
 }
 
 .course-title {
-  font-weight: 700;
   font-size: 15px;
+  font-weight: 700;
 }
 
+.course-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: rgba(26, 29, 51, 0.6);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sub-split {
+  color: rgba(26, 29, 51, 0.4);
+}
+
+.status-inline {
+  font-weight: 700;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.status-inline.active {
+  color: #3b6fe1;
+}
+
+.status-inline.pending {
+  color: #de8a2b;
+}
 </style>

@@ -35,10 +35,14 @@
           </div>
           <div class="task-foot">
             <div class="task-progress">
-              <div class="progress-meta progress-meta-inline">
-                <span>已批改 {{ task.gradedCount }} 人</span>
-                <span>未提交 {{ task.unsubmittedCount }} 人</span>
-                <span>AI批改成功 {{ task.aiSuccessCount }} / {{ task.submissionCount }}</span>
+              <div class="progress-meta progress-meta-inline progress-summary">
+                <span class="summary-item pending">待确认 {{ task.pendingCount }} 份</span>
+                <span class="summary-divider">·</span>
+                <span class="summary-item graded">已批改 {{ task.gradedCount }} 份</span>
+                <span class="summary-divider">·</span>
+                <span class="summary-item unsubmitted">未提交 {{ task.unsubmittedCount }} 份</span>
+                <span class="summary-divider">·</span>
+                <span class="summary-item ai-success">AI批改成功 {{ task.aiSuccessCount }} 份</span>
               </div>
               <div v-if="retryMessages[task.id]" class="task-hint">{{ retryMessages[task.id] }}</div>
             </div>
@@ -101,7 +105,12 @@ const formatDeadline = (deadline?: string | null) => {
   if (!deadline) return '未设置截止时间'
   const date = new Date(deadline)
   if (Number.isNaN(date.getTime())) return '未设置截止时间'
-  return `截止 ${date.toLocaleDateString('zh-CN')}`
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hour = String(date.getHours()).padStart(2, '0')
+  const minute = String(date.getMinutes()).padStart(2, '0')
+  return `截止 ${year}/${month}/${day} ${hour}:${minute}`
 }
 
 const gradingList = computed(() =>
@@ -117,6 +126,7 @@ const gradingList = computed(() =>
         deadline: formatDeadline(item.deadline),
         createdAt,
         gradedCount,
+        pendingCount: Number(item.pendingStudentCount ?? item.pendingCount ?? 0),
         unsubmittedCount: Number(item.unsubmittedCount ?? 0),
         aiSuccessCount: Number(item.aiSuccessCount ?? 0),
         aiFailedCount: Number(item.aiFailedCount ?? 0),
@@ -267,8 +277,39 @@ onMounted(async () => {
 .progress-meta-inline {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
   flex-wrap: wrap;
+}
+
+.progress-summary {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.summary-item {
+  display: inline-flex;
+  align-items: center;
+}
+
+.summary-item.pending {
+  color: #de8a2b;
+}
+
+.summary-item.graded {
+  color: #3b6fe1;
+}
+
+.summary-item.unsubmitted {
+  color: #7f879b;
+}
+
+.summary-item.ai-success {
+  color: #2f9a67;
+}
+
+.summary-divider {
+  color: rgba(26, 29, 51, 0.35);
+  font-weight: 600;
 }
 
 .task-hint {

@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { AssignmentAiGradingStrictness } from '../../assignment/entities/assignment.entity';
 
 export class ModelHintDto {
   @ApiPropertyOptional({ description: 'Model name override.' })
@@ -27,6 +28,17 @@ export class AiRunOptionsDto {
     description: 'Enable handwriting-focused grading prompt.',
   })
   handwritingRecognition?: boolean;
+
+  @ApiPropertyOptional({
+    enum: AssignmentAiGradingStrictness,
+    description: 'Grading strictness level.',
+  })
+  gradingStrictness?: AssignmentAiGradingStrictness;
+
+  @ApiPropertyOptional({
+    description: 'Teacher custom grading guidance text.',
+  })
+  customGuidance?: string;
 }
 
 export class UncertaintyPolicyDto {

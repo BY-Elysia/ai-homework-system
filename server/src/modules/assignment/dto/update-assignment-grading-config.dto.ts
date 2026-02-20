@@ -4,12 +4,15 @@ import {
   Min,
   IsArray,
   IsBoolean,
+  IsEnum,
   IsNumber,
   IsOptional,
   IsString,
+  MaxLength,
   IsUUID,
   ValidateNested,
 } from 'class-validator';
+import { AssignmentAiGradingStrictness } from '../entities/assignment.entity';
 
 class AssignmentWeightUpdateDto {
   @IsUUID()
@@ -53,6 +56,15 @@ export class UpdateAssignmentGradingConfigDto {
   @IsOptional()
   @IsBoolean()
   handwritingRecognition?: boolean;
+
+  @IsOptional()
+  @IsEnum(AssignmentAiGradingStrictness)
+  aiGradingStrictness?: AssignmentAiGradingStrictness;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  aiPromptGuidance?: string;
 
   @IsOptional()
   @IsNumber()

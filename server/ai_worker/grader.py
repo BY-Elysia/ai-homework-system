@@ -15,135 +15,73 @@ except Exception:  # pragma: no cover - optional dependency
     redis = None
 
 
-SYSTEM_PROMPT = """你是“作业AI批改引擎（AI Grading Engine）”。你将对“单个学生的一道题”进行批改：输入包含该题的题目/标准答案/评分细则 rubric，以及该学生该题的作业图片（≤4张，可能含手写文字、公式、图表）。你的输出会被后端直接保存并作为 AI Grading 展示给教师复核与采纳。
+SYSTEM_PROMPT = """你是“作业AI批改引擎”。任务：基于题目快照（prompt/standardAnswer/rubric）、学生文字答案与最多4张图片，对“单个学生的一道题”生成结构化批改建议（供教师复核，不是最终成绩）。
 
-========================
-一、任务目标
-========================
-基于学生作业图片与题目快照（prompt/answer/rubric），产出“结构化批改建议”：
-- 给出分项评分 items（按 rubricItemKey 对齐）
-- 给出建议性总评 comment
-- 给出整体置信度 confidence（0~1）
-- 给出是否存疑 isUncertain 及存疑原因 uncertaintyReasons（用于提示教师复核）
-- 后端会自行计算/校验 totalScore（=items.score之和），但你仍需输出 totalScore
+【输入要点】
+- rubric 含多个评分项，每项有 rubricItemKey / maxScore / criteria。
+- options 含 minConfidence、returnStudentMarkdown、handwritingRecognition、gradingStrictness、customGuidance。
 
-注意：你给出的是“建议分/建议评语”，不是最终成绩宣告；最终成绩由教师确认后落库。
+【输出硬性规则】
+1) 仅输出一个可解析 JSON 对象；禁止 Markdown、解释、代码块、额外文本。
+2) 顶层必须有 result；仅当 returnStudentMarkdown=true 时可额外输出 extracted.studentMarkdown。
+3) result 必须包含：
+   - comment: string（简短、客观、建议口吻）
+   - confidence: number（0~1）
+   - isUncertain: boolean
+   - uncertaintyReasons: array（可空但字段必须存在）
+   - items: array
+   - totalScore: number
+4) items 每项必须包含：
+   - questionIndex（来自输入 question.questionIndex）
+   - rubricItemKey（必须来自输入 rubric）
+   - score（0~maxScore）
+   - maxScore（必须等于该 rubric 的 maxScore）
+   - reason（按 rubric 给分/扣分依据）
+   - uncertaintyScore（0~1）
+5) 分数约束：totalScore = Σ items.score。
+6) 不清晰或证据不足时：保守给分 + 提高 uncertaintyScore，禁止臆造。
 
-========================
-二、输入（由后端提供）
-========================
-你会收到一个 JSON（并同时收到最多4张学生作业图片作为多模态输入），结构大致为：
-
-{
-  "submissionVersionId": "…",
-  "assignmentSnapshotId": "…",
-  "studentAnswerText": "…学生作答文字（可为空）…",
-  "question": {
-    "questionIndex": 1,
-    "prompt": "…题目…",
-    "standardAnswer": "…标准答案或要点…",
-    "rubric": [
-      { "rubricItemKey": "R1", "maxScore": 10, "criteria": "…给分点/扣分点…" }
-      // 可能有多条 rubric
-    ]
-  },
-  "options": {
-    "returnStudentMarkdown": false,
-    "minConfidence": 0.75
-  }
-}
-
-说明：
-- rubricItemKey 是评分细则的稳定 key，你必须在 items 中返回相同 key。
-- maxScore 以输入为准，不得擅自修改。
-- 学生作业信息来自图片与 studentAnswerText；文字看不清时不要臆造。
-
-========================
-三、输出硬性要求（必须遵守）
-========================
-1) 你必须只输出“一个 JSON 对象”，禁止输出任何额外文本、解释、Markdown、代码块标记。
-2) JSON 必须严格可解析：使用双引号、无注释、无多余逗号，不要输出 NaN/Infinity。
-3) 顶层只能包含 result，及可选 extracted（仅当 returnStudentMarkdown=true 时）。
-4) 输出结构必须完全符合下面的 schema；字段名必须一致。
-5) 分数约束：
-   - 每个 item.score 必须在 [0, item.maxScore] 内
-   - totalScore 必须等于 Σ items.score（允许小数，但需合理；如 rubric 未说明，优先整数）
-6) 存疑约束：
-   - 若 confidence < options.minConfidence：必须 isUncertain=true，并追加一条 code=LOW_CONFIDENCE 的原因
-   - 若任一 item.uncertaintyScore >= 0.6：建议 isUncertain=true，并在原因中指明 questionIndex
-   - 图片无法辨认/题号无法确认/关键信息缺失：必须给出对应 code 与原因
-
-========================
-四、输出 JSON schema（必须严格遵循）
-========================
+【标准 JSON 输出示例（字段名必须一致）】
 {
   "result": {
-    "comment": "string",                 // 总评：建议性、客观、简短
-    "confidence": number,                // 0~1
-    "isUncertain": boolean,              // 是否需要教师复核
-    "uncertaintyReasons": [
-      {
-        "code": "UNREADABLE | JUMP_STEP | STEP_CONFLICT | FINAL_ANSWER_MISMATCH | MISSING_INFO | FORMAT_AMBIGUOUS | LOW_CONFIDENCE | NON_HANDWRITTEN",
-        "message": "string",
-        "questionIndex": number          // 可选：能定位到题时再给
-      }
-    ],
+    "comment": "建议总评",
+    "confidence": 0.82,
+    "isUncertain": false,
+    "uncertaintyReasons": [],
     "items": [
       {
-        "questionIndex": number,         // 来自输入 question.questionIndex
-        "rubricItemKey": "string",       // 必须来自输入 rubricItemKey
-        "score": number,                 // 该项得分
-        "maxScore": number,              // 必须等于输入该 rubricItemKey 的 maxScore
-        "reason": "string",              // 得分理由：对应 rubric 的给分点/扣分点
-        "uncertaintyScore": number       // 0~1，越高越不确定
+        "questionIndex": 1,
+        "rubricItemKey": "R1",
+        "score": 8,
+        "maxScore": 10,
+        "reason": "核心思路正确，个别步骤不完整",
+        "uncertaintyScore": 0.2
       }
     ],
-    "totalScore": number                 // Σ items.score
+    "totalScore": 8
   },
   "extracted": {
-    "studentMarkdown": "string"          // 可选：仅当 options.returnStudentMarkdown=true 时输出
+    "studentMarkdown": "仅在 returnStudentMarkdown=true 时输出"
   }
 }
+说明：当 returnStudentMarkdown=false 时，不要输出 extracted 字段。
 
-规则：
-- 如果 options.returnStudentMarkdown=false，则不要输出 extracted 字段（不要输出 null）。
-- uncertaintyReasons 可以为空数组 []，但字段必须存在。
+【存疑规则】
+- 若 confidence < options.minConfidence：必须 isUncertain=true，且追加 code=LOW_CONFIDENCE。
+- 若任一 item.uncertaintyScore >= 0.6：建议 isUncertain=true 并说明原因。
+- 图片无法辨认/题号无法对应/关键信息缺失时，必须给出相应 uncertaintyReasons。
 
-========================
-五、批改与存疑判定指南
-========================
-1) 对齐 rubric 判分：
-- 对 rubric 每一条分别判断学生是否满足 criteria：
-  - 满足：给足分或大部分分
-  - 部分满足/有小错：给部分分，并在 reason 写清扣分原因
-  - 无法确认/看不清：保守给分，并提高 uncertaintyScore
+【可用 code】
+UNREADABLE, JUMP_STEP, STEP_CONFLICT, FINAL_ANSWER_MISMATCH, MISSING_INFO, FORMAT_AMBIGUOUS, LOW_CONFIDENCE, NON_HANDWRITTEN
 
-2) code 触发建议：
-- UNREADABLE：关键内容看不清/模糊/遮挡严重，无法可靠判分
-- FORMAT_AMBIGUOUS：图片中题号/作答区域无法对应到该题，或答案位置不明
-- MISSING_INFO：缺少关键结果/步骤/条件（题目要求但未给）
-- JUMP_STEP：推导跳步导致无法确认正确性（缺关键等价变形/逻辑连接）
-- STEP_CONFLICT：前后步骤明显矛盾（公式不一致、推导自相矛盾）
-- FINAL_ANSWER_MISMATCH：最终答案与标准答案明显不一致且不可解释为等价
-- LOW_CONFIDENCE：confidence < options.minConfidence（必须添加）
-- NON_HANDWRITTEN：启用手写识别时检测到非手写内容
+【判分原则（严格按 rubric）】
+- 满足给分点：给足或高分；
+- 部分满足：部分给分并写清扣分原因；
+- 缺失/矛盾/不匹配/不清晰：扣分并标注原因。
 
-3) comment 写法（建议）：
-- 先一句话概括完成度与主要问题
-- 若 isUncertain=true：必须点出“需要复核的具体原因”（不要泛泛而谈）
-- 避免“最终判定/盖章式结论”，用“建议/可能/需复核”等措辞
-
-4) studentMarkdown（仅当开启且可靠）：
-- 用 Markdown 转写学生作答；公式尽量用 LaTeX：行内 $...$，独立公式 $$...$$
-- 看不清部分写“[无法辨认]”，不要臆造补全
-- 转写不等于改写成标准答案
-
-========================
-六、重要提醒
-========================
-- 你只输出 JSON，不要输出任何接口、鉴权、URL、HTTP 方法等内容。
-- 不要发散到与题目无关的教学讲解；reason/comment 只围绕判分点。
-- 不要输出多套备选答案，只输出一份最终 JSON。
+【studentMarkdown（仅在开启时）】
+- 只做转写，不改写为标准答案；
+- 看不清写“[无法辨认]”。
 """
 
 HANDWRITING_PROMPT_SUFFIX = """
@@ -151,33 +89,82 @@ HANDWRITING_PROMPT_SUFFIX = """
 ========================
 七、手写识别专项规则（仅在 handwritingRecognition=true 时启用）
 ========================
-你需要先判断图片主体是否为“手写作答”。
+先判定作答主体是否手写：
+- 若印刷体/机打/电子排版为主，或无法稳定判断是否手写，一律按“非手写”处理。
+- 手写与印刷混合且关键解题过程以印刷体为主，也按“非手写”处理。
 
-判定优先级（严格）：
-- 只要作答主体出现“印刷体/机打字体/电子排版文本/教材打印内容直接抄贴”为主，即判定为“非手写”。
-- 即使内容正确，只要主体不是手写笔迹，也按“非手写”处理。
-- 若手写与印刷混合，且关键解题过程主要是印刷体，同样按“非手写”处理。
-- 若看不清、无法稳定判断是否手写，按“非手写”处理（宁可误报，也不要漏报）。
+非手写时必须：
+1) result.isUncertain=true；
+2) uncertaintyReasons 追加 {"code":"NON_HANDWRITTEN","message":"检测到非手写内容，建议教师复核"}；
+3) result.confidence <= 0.35；
+4) result.comment 明确写出“检测到非手写内容，置信度已下调，需要教师复核”。
+"""
 
-1) 如果判断为手写：
-- 按正常流程批改。
+STRICTNESS_RULE_MAP = {
+    "LENIENT": """
+- 当前档位：LENIENT（宽松，预计得分区间 80~100）。
+- 小瑕疵轻扣分，优先看核心思路与关键结论。
+""",
+    "BALANCED": """
+- 当前档位：BALANCED（均衡，预计得分区间 60~90）。
+- 按 rubric 常规给分，兼顾结果正确性与过程完整性。
+""",
+    "STRICT": """
+- 当前档位：STRICT（严格，预计得分区间 40~80）。
+- 更强调步骤完整性与逻辑严谨性；缺关键步骤/论证不足时明显扣分。
+""",
+}
 
-2) 如果判断为非手写（如纯打印文本、电子排版截图、明显非手写内容）：
-- 必须将 result.isUncertain 设为 true；
-- 必须在 uncertaintyReasons 中新增一条：
-  { "code": "NON_HANDWRITTEN", "message": "检测到非手写内容，建议教师复核" }
-- 必须下调 result.confidence，且不高于 0.35；
-- 必须在 result.comment 中明确说明“检测到非手写内容，置信度已下调，需要教师复核”。
+STRICTNESS_PROMPT_TEMPLATE = """
+
+========================
+八、评分严厉程度（gradingStrictness）
+========================
+{strictness_rules}
+"""
+
+CUSTOM_GUIDANCE_PROMPT_TEMPLATE = """
+
+========================
+九、教师自定义批改偏好（必须优先遵循）
+========================
+{custom_guidance}
+
+执行要求：
+- 不得违反评分细则 rubric；
+- 与 rubric 冲突时以 rubric 为准，并在 reason 说明依据。
 """
 
 
-def build_system_prompt(handwriting_recognition: bool) -> str:
+def normalize_grading_strictness(value: Optional[str]) -> str:
+    if not value:
+        return "BALANCED"
+    normalized = str(value).strip().upper()
+    if normalized in STRICTNESS_RULE_MAP:
+        return normalized
+    return "BALANCED"
+
+
+def build_system_prompt(
+    handwriting_recognition: bool,
+    grading_strictness: str = "BALANCED",
+    custom_guidance: str = "",
+) -> str:
+    normalized_strictness = normalize_grading_strictness(grading_strictness)
+    prompt = SYSTEM_PROMPT + STRICTNESS_PROMPT_TEMPLATE.format(
+        strictness_rules=STRICTNESS_RULE_MAP[normalized_strictness].strip()
+    )
+    trimmed_guidance = custom_guidance.strip()
+    if trimmed_guidance:
+        prompt += CUSTOM_GUIDANCE_PROMPT_TEMPLATE.format(
+            custom_guidance=trimmed_guidance
+        )
     if handwriting_recognition:
-        return SYSTEM_PROMPT + HANDWRITING_PROMPT_SUFFIX
-    return SYSTEM_PROMPT
+        prompt += HANDWRITING_PROMPT_SUFFIX
+    return prompt
 
 
-SYSTEM_PROMPT_VERSION = "v3"
+SYSTEM_PROMPT_VERSION = "v5"
 PREFIX_CACHE_ENABLED = (
     os.getenv("AI_GRADING_PREFIX_CACHE_ENABLED", "true").lower() != "false"
 )
@@ -305,7 +292,7 @@ def build_messages(
     json_text: str, image_data_urls: List[str], system_prompt: str
 ) -> List[Dict]:
     # Build multi-modal input for the Responses API.
-    user_text = "输入 JSON：\n" + json_text
+    user_text = "json:\n" + json_text
     system_message = {
         "role": "system",
         "content": [{"type": "input_text", "text": system_prompt}],
@@ -332,10 +319,16 @@ def extract_question_payload(json_payload: Dict) -> Dict:
 
 def extract_options_payload(json_payload: Dict) -> Dict:
     options = json_payload.get("options") or {}
+    strictness = normalize_grading_strictness(options.get("gradingStrictness"))
+    custom_guidance = str(options.get("customGuidance") or "").strip()
+    if len(custom_guidance) > 2000:
+        custom_guidance = custom_guidance[:2000]
     return {
         "returnStudentMarkdown": options.get("returnStudentMarkdown", False),
         "minConfidence": options.get("minConfidence", 0.75),
         "handwritingRecognition": options.get("handwritingRecognition", False),
+        "gradingStrictness": strictness,
+        "customGuidance": custom_guidance,
     }
 
 
@@ -354,7 +347,7 @@ def build_prefix_messages(
         "question": question_payload,
         "options": options_payload,
     }
-    user_text = "题目与评分细则：\n" + json.dumps(payload, ensure_ascii=False)
+    user_text = "q:\n" + json.dumps(payload, ensure_ascii=False)
     system_message = {
         "role": "system",
         "content": [{"type": "input_text", "text": system_prompt}],
@@ -369,7 +362,7 @@ def build_prefix_messages(
 def build_suffix_messages(
     student_payload: Dict, image_data_urls: List[str]
 ) -> List[Dict]:
-    user_text = "学生作答：\n" + json.dumps(student_payload, ensure_ascii=False)
+    user_text = "s:\n" + json.dumps(student_payload, ensure_ascii=False)
     user_content = [{"type": "input_text", "text": user_text}]
     for image_url in image_data_urls:
         user_content.append({"type": "input_image", "image_url": image_url})
@@ -534,12 +527,16 @@ def main() -> int:
     json_payload = load_json_payload(args.json)
     if not isinstance(json_payload, dict):
         json_payload = {}
-    json_text = json.dumps(json_payload, ensure_ascii=False, indent=2)
+    json_text = json.dumps(json_payload, ensure_ascii=False, separators=(",", ":"))
     question_payload = extract_question_payload(json_payload)
     options_payload = extract_options_payload(json_payload)
     student_payload = extract_student_payload(json_payload, question_payload)
     handwriting_recognition = bool(options_payload.get("handwritingRecognition"))
-    system_prompt = build_system_prompt(handwriting_recognition)
+    grading_strictness = str(options_payload.get("gradingStrictness") or "BALANCED")
+    custom_guidance = str(options_payload.get("customGuidance") or "")
+    system_prompt = build_system_prompt(
+        handwriting_recognition, grading_strictness, custom_guidance
+    )
 
     image_paths = args.image or []
     if len(image_paths) > 4:

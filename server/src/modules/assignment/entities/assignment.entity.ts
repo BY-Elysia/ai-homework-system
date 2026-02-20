@@ -7,6 +7,12 @@ export enum AssignmentStatus {
   ARCHIVED = 'ARCHIVED',
 }
 
+export enum AssignmentAiGradingStrictness {
+  LENIENT = 'LENIENT',
+  BALANCED = 'BALANCED',
+  STRICT = 'STRICT',
+}
+
 @Entity({ name: 'assignments' })
 export class AssignmentEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -44,6 +50,17 @@ export class AssignmentEntity {
 
   @Column({ name: 'handwriting_recognition', type: 'boolean', default: false })
   handwritingRecognition!: boolean;
+
+  @Column({ name: 'ai_prompt_guidance', type: 'text', nullable: true })
+  aiPromptGuidance?: string | null;
+
+  @Column({
+    name: 'ai_grading_strictness',
+    type: 'varchar',
+    length: 16,
+    default: AssignmentAiGradingStrictness.BALANCED,
+  })
+  aiGradingStrictness!: AssignmentAiGradingStrictness;
 
   @Column({
     name: 'ai_confidence_threshold',

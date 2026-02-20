@@ -27,7 +27,7 @@
           class="step-item"
           :class="{ active: step === 2 }"
           :disabled="!canEnterStep2"
-          @click="step = 2"
+          @click="goStep2"
         >
           2. 题库筛选
         </button>
@@ -72,25 +72,63 @@
           </div>
         </div>
         <div class="form-row">
-          <div class="form-field">
-            <label>AI 辅助批改</label>
-            <div class="checkbox-row">
-              <input id="ai-enabled" v-model="aiEnabled" type="checkbox" />
-              <label for="ai-enabled">启用 AI 批改</label>
-            </div>
-          </div>
-          <div class="form-field">
-            <label>低置信度阈值</label>
-            <div class="threshold-input-row">
-              <input
-                v-model.number="aiConfidenceThreshold"
-                type="number"
-                min="0"
-                max="1"
-                step="0.05"
-                :disabled="!aiEnabled"
-              />
-              <span class="helper-text">低于阈值将自动标记为“有异议”</span>
+          <div class="form-field ai-assist-group">
+            <label class="ai-assist-title">AI 辅助批改</label>
+            <div class="ai-assist-grid">
+              <div class="ai-assist-card">
+                <div class="ai-assist-card-title">基础开关</div>
+                <div class="checkbox-stack">
+                  <label class="checkbox-item">
+                    <input id="ai-enabled" v-model="aiEnabled" type="checkbox" />
+                    启用 AI 批改
+                  </label>
+                  <label class="checkbox-item">
+                    <input v-model="handwritingRecognition" type="checkbox" :disabled="!aiEnabled" />
+                    启用手写识别
+                  </label>
+                </div>
+              </div>
+              <div class="ai-assist-card">
+                <div class="ai-assist-card-title">低置信度阈值</div>
+                <div class="threshold-input-row">
+                  <input
+                    v-model.number="aiConfidenceThreshold"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    :disabled="!aiEnabled"
+                  />
+                  <span class="helper-text threshold-helper">低于阈值将自动标记为“有异议”</span>
+                </div>
+              </div>
+              <div class="ai-assist-card">
+                <div class="ai-assist-card-title">批改严厉程度</div>
+                <div class="strictness-grid">
+                  <button
+                    v-for="option in strictnessOptions"
+                    :key="option.value"
+                    type="button"
+                    class="strictness-pill"
+                    :class="{ active: aiGradingStrictness === option.value }"
+                    :disabled="!aiEnabled"
+                    @click="aiGradingStrictness = option.value"
+                  >
+                    <span class="strictness-label">{{ option.label }}</span>
+                    <span class="strictness-note">{{ option.distribution }}</span>
+                  </button>
+                </div>
+                <span class="helper-text">分布倾向：{{ strictnessDistributionLabel }}</span>
+              </div>
+              <div class="ai-assist-card">
+                <div class="ai-assist-card-title">自定义批改倾向（可选）</div>
+                <textarea
+                  v-model="aiPromptGuidance"
+                  :disabled="!aiEnabled"
+                  class="compact-textarea"
+                  placeholder="例如：更重视解题步骤完整性，公式书写规范可以酌情加分。"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -110,10 +148,6 @@
                 <input v-model="allowViewScore" type="checkbox" />
                 教师批改后允许学生查看分数
               </label>
-              <label class="checkbox-item">
-                <input v-model="handwritingRecognition" type="checkbox" />
-                启用手写识别批改模式
-              </label>
             </div>
           </div>
         </div>
@@ -123,8 +157,8 @@
         </div>
       </div>
       <div class="step-actions">
-        <button class="primary-btn" type="button" :disabled="!canEnterStep2" @click="step = 2">
-          下一步
+        <button class="primary-btn" type="button" :disabled="!canEnterStep2" @click="goStep2">
+          {{ checkingStep1 ? '校验中...' : '下一步' }}
         </button>
       </div>
     </section>
@@ -323,9 +357,10 @@
               <div class="estimate-sub">按单任务 {{ estimatedSecondsPerRun }} 秒估算</div>
             </div>
           </div>
-          <div class="estimate-foot">
+        <div class="estimate-foot">
             阈值 {{ aiConfidenceThreshold.toFixed(2) }} ·
             {{ handwritingRecognition ? '手写识别模式' : '标准识别模式' }} ·
+            {{ strictnessModeText }}（{{ strictnessDistributionLabel }}） ·
             当前课程已有 {{ courseAssignmentCount }} 份作业
           </div>
         </template>
@@ -377,6 +412,8 @@ const title = ref('')
 const description = ref('')
 const deadline = ref('')
 const aiEnabled = ref(true)
+const aiGradingStrictness = ref('BALANCED')
+const aiPromptGuidance = ref('')
 const aiConfidenceThreshold = ref(0.75)
 const visibleAfterSubmit = ref(true)
 const allowViewAnswer = ref(false)
@@ -396,6 +433,32 @@ const step = ref(1)
 const questionError = ref('')
 const submitError = ref('')
 const submitLoading = ref(false)
+const checkingStep1 = ref(false)
+
+const strictnessOptions = [
+  {
+    value: 'LENIENT',
+    label: '宽松',
+    distribution: '分布右移，高分段占比更高',
+  },
+  {
+    value: 'BALANCED',
+    label: '均衡',
+    distribution: '分布居中，整体接近常规正态',
+  },
+  {
+    value: 'STRICT',
+    label: '严格',
+    distribution: '分布左移，对步骤完整性更敏感',
+  },
+]
+
+const normalizeStrictness = (value) => {
+  const candidate = String(value || '').toUpperCase()
+  return strictnessOptions.some((item) => item.value === candidate)
+    ? candidate
+    : 'BALANCED'
+}
 
 const normalizeConfidenceThreshold = (value) => {
   const num = Number(value)
@@ -404,6 +467,16 @@ const normalizeConfidenceThreshold = (value) => {
   if (num > 1) return 1
   return Number(num.toFixed(3))
 }
+
+const strictnessPreset = computed(
+  () =>
+    strictnessOptions.find((item) => item.value === aiGradingStrictness.value) ??
+    strictnessOptions[1],
+)
+
+const strictnessDistributionLabel = computed(() => strictnessPreset.value.distribution)
+
+const strictnessModeText = computed(() => strictnessPreset.value.label)
 
 const selectedQuestionCount = computed(() =>
   selectedQuestionOrder.value.filter((id) => selectedQuestionIds.value.has(id)).length,
@@ -500,6 +573,13 @@ const hydrateForm = async () => {
     deadline.value = payload?.deadline ?? deadline.value
     aiEnabled.value =
       typeof payload?.aiEnabled === 'boolean' ? payload.aiEnabled : aiEnabled.value
+    aiGradingStrictness.value = normalizeStrictness(
+      payload?.aiGradingStrictness ?? aiGradingStrictness.value,
+    )
+    aiPromptGuidance.value =
+      typeof payload?.aiPromptGuidance === 'string'
+        ? payload.aiPromptGuidance
+        : aiPromptGuidance.value
     visibleAfterSubmit.value =
       typeof payload?.visibleAfterSubmit === 'boolean'
         ? payload.visibleAfterSubmit
@@ -554,6 +634,8 @@ const persistForm = () => {
     description: description.value,
     deadline: deadline.value,
     aiEnabled: aiEnabled.value,
+    aiGradingStrictness: aiGradingStrictness.value,
+    aiPromptGuidance: aiPromptGuidance.value,
     visibleAfterSubmit: visibleAfterSubmit.value,
     allowViewAnswer: allowViewAnswer.value,
     allowViewScore: allowViewScore.value,
@@ -587,6 +669,12 @@ watch(selectedQuestionIds, () => {
   syncWeights()
 })
 
+watch(aiEnabled, (enabled) => {
+  if (!enabled) {
+    handwritingRecognition.value = false
+  }
+})
+
 watch(
   [
     selectedCourseId,
@@ -597,6 +685,8 @@ watch(
     description,
     deadline,
     aiEnabled,
+    aiGradingStrictness,
+    aiPromptGuidance,
     visibleAfterSubmit,
     allowViewAnswer,
     allowViewScore,
@@ -949,6 +1039,7 @@ const weightSum = computed(() =>
 )
 
 const canEnterStep2 = computed(() => {
+  if (checkingStep1.value) return false
   if (!selectedCourseId.value) return false
   if (!title.value.trim()) return false
   return true
@@ -1066,6 +1157,38 @@ const viewDetail = (questionId) => {
   })
 }
 
+const hasDuplicateAssignmentTitle = async () => {
+  const normalizedTitle = title.value.trim().toLowerCase()
+  if (!selectedCourseId.value || !normalizedTitle) return false
+  const teacherAssignments = await listTeacherAssignments()
+  return (teacherAssignments.items ?? []).some((item) => {
+    const itemCourseId = String(item.courseId ?? '')
+    const itemTitle = String(item.title ?? '').trim().toLowerCase()
+    return itemCourseId === selectedCourseId.value && itemTitle === normalizedTitle
+  })
+}
+
+const goStep2 = async () => {
+  submitError.value = ''
+  if (!selectedCourseId.value || !title.value.trim()) return
+  if (checkingStep1.value) return
+  checkingStep1.value = true
+  try {
+    const duplicateExists = await hasDuplicateAssignmentTitle()
+    if (duplicateExists) {
+      submitError.value = '同一课程下作业标题已存在，请更换后再继续'
+      showAppToast(submitError.value, 'error')
+      return
+    }
+    step.value = 2
+  } catch (err) {
+    submitError.value = err instanceof Error ? err.message : '作业标题校验失败'
+    showAppToast(submitError.value, 'error')
+  } finally {
+    checkingStep1.value = false
+  }
+}
+
 const handlePublish = async () => {
   submitError.value = ''
 
@@ -1085,13 +1208,7 @@ const handlePublish = async () => {
   if (submitLoading.value) return
   submitLoading.value = true
   try {
-    const normalizedTitle = title.value.trim().toLowerCase()
-    const teacherAssignments = await listTeacherAssignments()
-    const duplicateExists = (teacherAssignments.items ?? []).some((item) => {
-      const itemCourseId = String(item.courseId ?? '')
-      const itemTitle = String(item.title ?? '').trim().toLowerCase()
-      return itemCourseId === selectedCourseId.value && itemTitle === normalizedTitle
-    })
+    const duplicateExists = await hasDuplicateAssignmentTitle()
     if (duplicateExists) {
       submitError.value = '同一课程下作业标题已存在，请更换后再发布'
       return
@@ -1104,6 +1221,8 @@ const handlePublish = async () => {
       deadline: deadline.value || undefined,
       totalScore: Number(totalScore.value) || 100,
       aiEnabled: aiEnabled.value,
+      aiGradingStrictness: normalizeStrictness(aiGradingStrictness.value),
+      aiPromptGuidance: aiPromptGuidance.value.trim() || undefined,
       visibleAfterSubmit: visibleAfterSubmit.value,
       allowViewAnswer: allowViewAnswer.value,
       allowViewScore: allowViewScore.value,
@@ -1126,6 +1245,8 @@ const handlePublish = async () => {
     description.value = ''
     deadline.value = ''
     aiEnabled.value = true
+    aiGradingStrictness.value = 'BALANCED'
+    aiPromptGuidance.value = ''
     visibleAfterSubmit.value = true
     allowViewAnswer.value = false
     allowViewScore.value = true
@@ -1316,6 +1437,99 @@ const handlePublish = async () => {
   margin-top: 16px;
 }
 
+.compact-textarea {
+  min-height: 88px;
+}
+
+.ai-assist-group {
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.ai-assist-title {
+  display: block;
+}
+
+.ai-assist-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ai-assist-card {
+  border: 1px solid rgba(202, 216, 238, 0.34);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.74);
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.ai-assist-card-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(26, 29, 51, 0.88);
+}
+
+.strictness-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.strictness-pill {
+  border: 1px solid rgba(186, 204, 234, 0.7);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.78);
+  color: rgba(26, 29, 51, 0.86);
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+  display: grid;
+  gap: 2px;
+  transition: all 0.15s ease;
+}
+
+.strictness-pill:hover:not(:disabled) {
+  border-color: rgba(120, 160, 230, 0.85);
+}
+
+.strictness-pill.active {
+  border-color: rgba(120, 160, 230, 0.9);
+  background: rgba(229, 240, 255, 0.9);
+}
+
+.strictness-pill:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.strictness-label {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.strictness-note {
+  font-size: 12px;
+  color: rgba(26, 29, 51, 0.6);
+}
+
+.ai-assist-card input[type='number'],
+.ai-assist-card textarea {
+  border: 1px solid rgba(151, 177, 223, 0.75);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+
+.ai-assist-card input[type='number']:focus,
+.ai-assist-card textarea:focus {
+  outline: none;
+  border-color: rgba(104, 152, 230, 0.95);
+  box-shadow: 0 0 0 3px rgba(117, 168, 235, 0.18);
+}
+
 .primary-btn.ghost {
   background: rgba(255, 255, 255, 0.7);
   color: rgba(26, 29, 51, 0.8);
@@ -1335,8 +1549,10 @@ const handlePublish = async () => {
 }
 
 .threshold-input-row {
-  display: grid;
-  gap: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .threshold-input-row input {
@@ -1349,6 +1565,15 @@ const handlePublish = async () => {
 
 .threshold-input-row input:disabled {
   opacity: 0.6;
+}
+
+.threshold-helper {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 12px;
+  color: rgba(26, 29, 51, 0.62);
+  white-space: nowrap;
 }
 
 .ai-estimate-card {
@@ -1427,6 +1652,14 @@ const handlePublish = async () => {
 
 @media (max-width: 900px) {
   .estimate-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-assist-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .strictness-grid {
     grid-template-columns: 1fr;
   }
 }

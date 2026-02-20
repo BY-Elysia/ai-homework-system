@@ -1,6 +1,8 @@
 import { httpRequest } from './http'
 import { getAccessToken } from '../auth/storage'
 
+export type AiGradingStrictness = 'LENIENT' | 'BALANCED' | 'STRICT'
+
 export type AssignmentSummary = {
   id: string
   title: string
@@ -17,6 +19,8 @@ export type AssignmentSummary = {
   allowViewAnswer?: boolean
   allowViewScore?: boolean
   handwritingRecognition?: boolean
+  aiPromptGuidance?: string | null
+  aiGradingStrictness?: AiGradingStrictness
   aiConfidenceThreshold?: number
 }
 
@@ -73,6 +77,8 @@ export type CreateAssignmentRequest = {
   allowViewAnswer?: boolean
   allowViewScore?: boolean
   handwritingRecognition?: boolean
+  aiPromptGuidance?: string
+  aiGradingStrictness?: AiGradingStrictness
   aiConfidenceThreshold?: number
   selectedQuestionIds?: string[]
 }
@@ -172,6 +178,8 @@ export async function updateAssignmentGradingConfig(
     allowViewAnswer?: boolean
     allowViewScore?: boolean
     handwritingRecognition?: boolean
+    aiPromptGuidance?: string
+    aiGradingStrictness?: AiGradingStrictness
     aiConfidenceThreshold?: number
     questionWeights?: Array<{ questionId: string; weight: number }>
   },

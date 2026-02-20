@@ -27,19 +27,21 @@
             </div>
             <div class="task-deadline">{{ task.deadline }}</div>
           </div>
-          <div class="task-progress">
-            <div class="progress-meta">
-              <span>{{ task.statusLabel }}</span>
+          <div class="task-foot">
+            <div class="task-progress">
+              <div class="progress-meta">
+                <span>{{ task.statusLabel }}</span>
+              </div>
             </div>
+            <button
+              v-if="task.showAction"
+              class="task-action"
+              :disabled="task.actionDisabled"
+              @click="handleTaskAction(task)"
+            >
+              {{ task.actionLabel }}
+            </button>
           </div>
-          <button
-            v-if="task.showAction"
-            class="task-action"
-            :disabled="task.actionDisabled"
-            @click="handleTaskAction(task)"
-          >
-            {{ task.actionLabel }}
-          </button>
         </div>
         <div v-if="!assignmentList.length" class="task-empty">
           {{ assignmentError || '暂无作业' }}
@@ -70,7 +72,12 @@ const formatDeadline = (deadline) => {
   if (!deadline) return '未设置截止时间'
   const date = new Date(deadline)
   if (Number.isNaN(date.getTime())) return '未设置截止时间'
-  return `截止 ${date.toLocaleDateString('zh-CN')}`
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hour = String(date.getHours()).padStart(2, '0')
+  const minute = String(date.getMinutes()).padStart(2, '0')
+  return `截止 ${year}/${month}/${day} ${hour}:${minute}`
 }
 
 const renderTextHtml = (text) => {
@@ -186,6 +193,23 @@ onMounted(async () => {
   font-size: 12px;
   color: rgba(26, 29, 51, 0.7);
   cursor: pointer;
+}
+
+.task-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.task-foot .task-progress {
+  min-width: 0;
+  flex: 1;
+}
+
+.task-foot .task-action {
+  justify-self: auto;
+  margin-left: auto;
 }
 
 .task-action:disabled {

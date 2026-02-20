@@ -154,6 +154,8 @@ export class AiGradingWorkerService implements OnModuleInit, OnModuleDestroy {
           minConfidence: payload.uncertaintyPolicy?.minConfidence,
           returnStudentMarkdown: payload.options?.returnStudentMarkdown,
           handwritingRecognition: payload.options?.handwritingRecognition,
+          gradingStrictness: payload.options?.gradingStrictness,
+          customGuidance: payload.options?.customGuidance,
         },
         submissionVersion.fileUrl,
         timeoutSeconds * 1000,
@@ -233,6 +235,8 @@ export class AiGradingWorkerService implements OnModuleInit, OnModuleDestroy {
       minConfidence?: number;
       returnStudentMarkdown?: boolean;
       handwritingRecognition?: boolean;
+      gradingStrictness?: string;
+      customGuidance?: string;
     },
     fileUrlValue: string,
     timeoutMs: number,
@@ -255,6 +259,8 @@ export class AiGradingWorkerService implements OnModuleInit, OnModuleDestroy {
         returnStudentMarkdown: input.returnStudentMarkdown ?? false,
         minConfidence: input.minConfidence ?? 0.75,
         handwritingRecognition: input.handwritingRecognition ?? false,
+        gradingStrictness: input.gradingStrictness ?? 'BALANCED',
+        customGuidance: input.customGuidance ?? '',
       },
     };
 

@@ -182,6 +182,16 @@
 
           <div class="grading-panel">
             <div class="detail-section">
+              <div v-if="highRiskReasons.length" class="risk-alert risk-alert-inline">
+                <div class="risk-title">高风险提示（建议优先复核）</div>
+                <ul class="risk-list">
+                  <li v-for="(reason, idx) in highRiskReasons" :key="`risk-inline-${idx}`" class="risk-item">
+                    <span class="risk-code">{{ reason.code }}</span>
+                    <span class="risk-message">{{ reason.message || '存在高风险不确定项' }}</span>
+                  </li>
+                </ul>
+              </div>
+
               <details class="ai-details" :open="!selectedSubmission?.isFinal">
                 <summary class="ai-summary-header">
                   <span>AI 批改结果</span>
@@ -191,16 +201,6 @@
                 <div class="ai-status">状态：{{ aiPanel.statusLabel }}</div>
                 <div v-if="aiPanel.error" class="ai-error">{{ aiPanel.error }}</div>
                 <div v-if="aiPanel.result" class="ai-result">
-                  <div v-if="highRiskReasons.length" class="risk-alert">
-                    <div class="risk-title">高风险提示（建议优先复核）</div>
-                    <ul class="risk-list">
-                      <li v-for="(reason, idx) in highRiskReasons" :key="`risk-${idx}`">
-                        <span class="risk-code">{{ reason.code }}</span>
-                        <span>{{ reason.message || '存在高风险不确定项' }}</span>
-                      </li>
-                    </ul>
-                  </div>
-
                   <div class="ai-summary">
                     <div class="ai-row">
                       <span class="ai-label">总评：</span>
@@ -251,9 +251,10 @@
                       <li
                         v-for="(reason, idx) in aiPanel.result?.result?.uncertaintyReasons"
                         :key="`reason-${idx}`"
+                        class="risk-item"
                       >
                         <span class="risk-code">{{ reason.code || 'UNKNOWN' }}</span>
-                        <span>{{ reason.message || '模型返回不确定原因' }}</span>
+                        <span class="risk-message">{{ reason.message || '模型返回不确定原因' }}</span>
                       </li>
                     </ul>
                   </div>
@@ -345,6 +346,7 @@ import { getAssignmentSnapshot } from '../api/assignment'
 import { listMissingByAssignment, listSubmissionsByAssignment } from '../api/teacherGrading'
 import { getAiJobStatus, getAiGradingResult, runAiGrading } from '../api/aiGrading'
 import { getFinalGrading, submitFinalGrading } from '../api/grading'
+import { publishAssignmentScores } from '../api/score'
 import { API_BASE_URL } from '../api/http'
 import type { AiGradingResult } from '../api/aiGrading'
 import type { AssignmentSnapshotQuestion } from '../api/assignment'
@@ -974,6 +976,10 @@ const adoptBatchAi = async () => {
       target.submission.status = 'FINAL'
       target.submission.aiStatus = 'SUCCESS'
       target.submission.aiIsUncertain = Boolean(aiResult.result?.isUncertain)
+      const publishState = await tryAutoPublishForStudent(String(target.submission?.student?.studentId ?? ''))
+      if (publishState.published) {
+        target.submission.scorePublished = true
+      }
       success += 1
     } catch {
       failed += 1
@@ -990,11 +996,29 @@ const adoptBatchAi = async () => {
   await loadData()
 }
 
+const tryAutoPublishForStudent = async (studentId: string) => {
+  if (!assignmentId.value || !studentId) {
+    return { published: false, pending: false }
+  }
+  try {
+    await publishAssignmentScores(assignmentId.value, studentId)
+    return { published: true, pending: false }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : ''
+    if (message.includes('题目未全部评分')) {
+      return { published: false, pending: true }
+    }
+    return { published: false, pending: false }
+  }
+}
+
 const submitGrading = async (forceAiAdopt: boolean) => {
   const submission = selectedSubmission.value
   if (!submission) return
   saveError.value = ''
   saving.value = true
+  let published = false
+  let pendingPublish = false
   try {
     if (forceAiAdopt) {
       if (!aiPanel.value.result) {
@@ -1032,7 +1056,17 @@ const submitGrading = async (forceAiAdopt: boolean) => {
     editingOverride.value = false
     baselineScore.value = Number(totalScoreInput.value) || 0
     baselineComment.value = finalComment.value || ''
-    showAppToast(forceAiAdopt ? '已采用AI评语并确认修改' : '已确认修改', 'success')
+    const publishState = await tryAutoPublishForStudent(String(submission?.student?.studentId ?? ''))
+    published = publishState.published
+    pendingPublish = publishState.pending
+    if (published) {
+      submission.scorePublished = true
+      showAppToast('已确认修改，学生端已可见分数', 'success')
+    } else if (pendingPublish) {
+      showAppToast('已确认修改，全部题目确认后将自动对学生可见', 'success')
+    } else {
+      showAppToast(forceAiAdopt ? '已采用AI评语并确认修改' : '已确认修改', 'success')
+    }
   } catch (err) {
     saveError.value = err instanceof Error ? err.message : '保存失败'
     showAppToast(saveError.value || '保存失败', 'error')
@@ -1645,6 +1679,10 @@ watch([assignmentId, submissionVersionId], async () => {
   gap: 8px;
 }
 
+.risk-alert-inline {
+  margin-bottom: 10px;
+}
+
 .risk-title {
   font-size: 12px;
   font-weight: 700;
@@ -1660,18 +1698,29 @@ watch([assignmentId, submissionVersionId], async () => {
   color: rgba(26, 29, 51, 0.86);
 }
 
+.risk-item {
+  display: grid;
+  gap: 4px;
+  align-items: start;
+}
+
 .risk-code {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: fit-content;
   min-width: 82px;
   padding: 1px 8px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
-  margin-right: 6px;
   background: rgba(220, 90, 90, 0.15);
   color: #aa2a2a;
+}
+
+.risk-message {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .ai-row {

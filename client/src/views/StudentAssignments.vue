@@ -11,19 +11,22 @@
         选择课程
         <span class="badge">{{ courseList.length }} 门</span>
       </div>
-      <div class="course-list">
-        <div v-for="course in courseList" :key="course.courseId" class="course-card">
-          <div class="course-main">
-            <div class="course-title">{{ course.name }}</div>
-            <div class="course-sub">作业 {{ course.total }} 份</div>
-          </div>
-          <div class="course-foot">
-            <div class="course-meta">
-              <span class="course-pill">进行中 {{ course.open }}</span>
-              <span class="course-pill">已截止 {{ course.closed }}</span>
-              <span class="course-pill">已归档 {{ course.archived }}</span>
-            </div>
-            <button class="task-action" @click="goCourse(course.courseId)">进入课程</button>
+      <div class="course-grid">
+        <div
+          v-for="course in courseList"
+          :key="course.courseId"
+          class="course-card"
+          @click="goCourse(course.courseId)"
+        >
+          <div class="course-title">{{ course.name }}</div>
+          <div class="course-sub">
+            <span>作业 {{ course.total }} 份</span>
+            <span class="sub-split">·</span>
+            <span class="status-inline active">进行中 {{ course.open }}</span>
+            <span class="sub-split">·</span>
+            <span class="status-inline archived">已截止 {{ course.closed }}</span>
+            <span class="sub-split">·</span>
+            <span class="status-inline archived">已归档 {{ course.archived }}</span>
           </div>
         </div>
         <div v-if="!courseList.length" class="task-empty">
@@ -88,47 +91,55 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.course-list {
+.course-grid {
   display: grid;
   gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
 .course-card {
-  background: rgba(255, 255, 255, 0.6);
-  border-radius: 18px;
-  padding: 16px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
   display: grid;
-  gap: 10px;
+  gap: 6px;
+}
+
+.course-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(24, 34, 64, 0.12);
 }
 
 .course-title {
   font-weight: 700;
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .course-sub {
+  margin-top: 4px;
   font-size: 12px;
   color: rgba(26, 29, 51, 0.55);
-}
-
-.course-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  font-size: 12px;
-}
-
-.course-foot {
-  display: flex;
-  gap: 12px;
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.course-pill {
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.7);
-  color: rgba(26, 29, 51, 0.7);
+.sub-split {
+  color: rgba(26, 29, 51, 0.4);
+}
+
+.status-inline {
+  font-weight: 700;
+}
+
+.status-inline.active {
+  color: #3b6fe1;
+}
+
+.status-inline.archived {
+  color: rgba(26, 29, 51, 0.64);
 }
 </style>
