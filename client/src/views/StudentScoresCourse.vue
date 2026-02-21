@@ -179,13 +179,21 @@ onMounted(async () => {
 }
 
 .ghost-action {
-  border: none;
+  border: 1px solid rgba(173, 188, 216, 0.55);
   background: rgba(255, 255, 255, 0.7);
   padding: 6px 14px;
   border-radius: 999px;
   font-size: 12px;
   color: rgba(26, 29, 51, 0.7);
   cursor: pointer;
+  box-shadow: 0 4px 10px rgba(56, 76, 126, 0.08);
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+
+.ghost-action:hover {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(125, 155, 214, 0.58);
+  color: rgba(26, 29, 51, 0.86);
 }
 
 :deep(.grade-action:disabled) {

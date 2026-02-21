@@ -13,7 +13,7 @@
         <RouterLink
           to="/student"
           class="nav-item"
-          :class="{ active: isActive('/student') }"
+          :class="{ active: isActive('/student', true) }"
         >
           个人主页
         </RouterLink>
@@ -97,7 +97,10 @@ const props = defineProps({
 
 const route = useRoute()
 const router = useRouter()
-const isActive = (path) => route.path === path
+const isActive = (path, exact = false) => {
+  if (exact) return route.path === path
+  return route.path === path || route.path.startsWith(`${path}/`)
+}
 
 const usage = ref({
   usedTokens: 0,
