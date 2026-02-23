@@ -25,7 +25,7 @@
         </div>
         <div class="paper-save-actions">
           <button class="primary-btn" type="button" @click="savePaper">保存试卷</button>
-          <button class="primary-btn ghost" type="button" @click="createNewPaper">新建试卷</button>
+          <button class="primary-btn ghost" type="button" @click="createNewPaper()">新建试卷</button>
         </div>
       </div>
       <div class="helper-text">
@@ -346,7 +346,7 @@
                   <div v-if="question.questionType === 'FILL_BLANK'" class="form-field">
                     <label>标准答案（填空）</label>
                     <div class="blank-list">
-                      <div v-for="(blank, blankIndex) in question.blankAnswers" :key="`blank-${question.tempId}-${blankIndex}`" class="blank-row">
+                      <div v-for="(_, blankIndex) in question.blankAnswers" :key="`blank-${question.tempId}-${blankIndex}`" class="blank-row">
                         <input v-model="question.blankAnswers[blankIndex]" type="text" :placeholder="`第 ${blankIndex + 1} 空答案`" />
                         <button v-if="question.blankAnswers.length > 1" class="qb-action" type="button" @click="removeBlankAnswer(question.tempId, blankIndex)">
                           移除
@@ -883,7 +883,12 @@ const buildPaperPayload = (): SavedPaper | null => {
     return null
   }
   for (let i = 0; i < customQuestions.value.length; i += 1) {
-    const msg = validateCustomQuestion(customQuestions.value[i], i + 1)
+    const question = customQuestions.value[i]
+    if (!question) {
+      showAppToast('自定义题数据异常，请刷新后重试', 'error')
+      return null
+    }
+    const msg = validateCustomQuestion(question, i + 1)
     if (msg) {
       showAppToast(msg, 'error')
       return null
@@ -977,7 +982,9 @@ const loadPaper = async (paperId: string) => {
       ? content.selectedQuestionOrder.map((v: any) => String(v)).filter(Boolean)
       : Array.from(selectedQuestionIds.value)
     customQuestions.value = Array.isArray(content.customQuestions)
-      ? content.customQuestions.map((q: any) => sanitizeCustomQuestionDraft(q)).filter(Boolean) as CustomQuestionDraft[]
+      ? content.customQuestions
+          .map((q: any) => sanitizeCustomQuestionDraft(q))
+          .filter((q): q is CustomQuestionDraft => q !== null)
       : []
     customQuestionCounter.value = customQuestions.value.length + 1
     showAppToast('试卷已载入', 'success')
