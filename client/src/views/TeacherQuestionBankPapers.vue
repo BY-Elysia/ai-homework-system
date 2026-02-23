@@ -984,7 +984,7 @@ const loadPaper = async (paperId: string) => {
     customQuestions.value = Array.isArray(content.customQuestions)
       ? content.customQuestions
           .map((q: any) => sanitizeCustomQuestionDraft(q))
-          .filter((q): q is CustomQuestionDraft => q !== null)
+          .filter((q: CustomQuestionDraft | null): q is CustomQuestionDraft => q !== null)
       : []
     customQuestionCounter.value = customQuestions.value.length + 1
     showAppToast('试卷已载入', 'success')
