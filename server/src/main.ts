@@ -111,7 +111,16 @@ async function bootstrap() {
   }
   const cwdUploads = join(process.cwd(), 'uploads');
   const repoUploads = join(process.cwd(), 'server', 'uploads');
-  const uploadRoot = existsSync(cwdUploads) ? cwdUploads : repoUploads;
+  const cwdSubmissions = join(cwdUploads, 'submissions');
+  const repoSubmissions = join(repoUploads, 'submissions');
+
+  // Prefer the directory that actually contains submission files.
+  let uploadRoot = existsSync(cwdUploads) ? cwdUploads : repoUploads;
+  if (existsSync(cwdSubmissions)) {
+    uploadRoot = cwdUploads;
+  } else if (existsSync(repoSubmissions)) {
+    uploadRoot = repoUploads;
+  }
   app.use('/uploads', express.static(uploadRoot));
   app.useGlobalPipes(
     new ValidationPipe({

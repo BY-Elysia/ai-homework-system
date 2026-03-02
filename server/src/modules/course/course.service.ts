@@ -85,6 +85,49 @@ export class CourseService {
       throw new BadRequestException('缺少 schoolId');
     }
 
+    if (requester.role === UserRole.STUDENT) {
+      if (!requester.sub) {
+        throw new BadRequestException('缺少学生身份');
+      }
+      const rows = await this.dataSource.query(
+        `
+          SELECT
+            c.id,
+            c.school_id AS "schoolId",
+            c.name,
+            c.semester,
+            c.teacher_id AS "teacherId",
+            c.status,
+            c.created_at AS "createdAt",
+            c.updated_at AS "updatedAt",
+            u.name AS "teacherName",
+            u.account AS "teacherAccount"
+          FROM course_students cs
+          INNER JOIN courses c ON c.id = cs.course_id
+          LEFT JOIN users u ON u.id = c.teacher_id
+          WHERE cs.student_id = $1
+            AND cs.status = 'ENROLLED'
+            AND c.school_id = $2
+          ORDER BY c.created_at DESC
+        `,
+        [requester.sub, schoolId],
+      );
+      return {
+        items: rows.map((row: any) => ({
+          id: row.id,
+          schoolId: row.schoolId,
+          name: row.name,
+          semester: row.semester,
+          teacherId: row.teacherId,
+          teacherName: this.normalizeDisplayName(row.teacherName),
+          teacherAccount: row.teacherAccount ?? null,
+          status: row.status,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+        })),
+      };
+    }
+
     const qb = this.courseRepo.createQueryBuilder('course');
     qb.where('course.school_id = :schoolId', { schoolId });
 

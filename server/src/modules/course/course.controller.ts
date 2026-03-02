@@ -35,6 +35,7 @@ export class CourseController {
   }
 
   @Get()
+  @Roles(UserRole.TEACHER, UserRole.ADMIN, UserRole.STUDENT)
   async listCourses(
     @Query() query: CourseQueryDto,
     @Req() req: { user?: { sub?: string; role?: UserRole; schoolId?: string } },

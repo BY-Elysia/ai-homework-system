@@ -1,0 +1,52 @@
+{
+  "pages": [
+    {
+      "path": "pages/login/index",
+      "style": {
+        "navigationBarTitleText": "登录"
+      }
+    },
+    {
+      "path": "pages/student/courses",
+      "style": {
+        "navigationBarTitleText": "我的课程"
+      }
+    },
+    {
+      "path": "pages/student/assignments",
+      "style": {
+        "navigationBarTitleText": "作业库"
+      }
+    },
+    {
+      "path": "pages/student/assistant",
+      "style": {
+        "navigationBarTitleText": "AI 助手"
+      }
+    },
+    {
+      "path": "pages/student/submit",
+      "style": {
+        "navigationBarTitleText": "作业提交"
+      }
+    },
+    {
+      "path": "pages/student/scores",
+      "style": {
+        "navigationBarTitleText": "成绩看板"
+      }
+    },
+    {
+      "path": "pages/student/score-detail",
+      "style": {
+        "navigationBarTitleText": "成绩详情"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "AI Homework",
+    "navigationBarBackgroundColor": "#f4f7fc",
+    "backgroundColor": "#eef2f8"
+  }
+}
